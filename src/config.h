@@ -2,19 +2,19 @@
 #include <stdint.h>
 
 // ─── LIDAR LD06 ───────────────────────────────────────────────────────────────
-#define LIDAR_RX_PIN        7
+#define LIDAR_RX_PIN        9
 #define LIDAR_TX_PIN        17
 #define LIDAR_BAUD          230400
-#define LIDAR_PWM_PIN       1
+#define LIDAR_PWM_PIN       8
 #define LIDAR_PWM_FREQ_HZ   10000
 #define LIDAR_PWM_DUTY      128       // 50% sur 8 bits → ~2400 RPM
 #define LIDAR_OFFSET_DEG    0.0f      // décalage angulaire LIDAR/axe robot (à calibrer)
 
 // ─── ENCODEURS AMT102V (quadrature x4, roues codeuses ∅50 mm) ────────────────
-#define ENC_LEFT_A_PIN      7
-#define ENC_LEFT_B_PIN      2
-#define ENC_RIGHT_A_PIN     3
-#define ENC_RIGHT_B_PIN     4
+#define ENC_LEFT_A_PIN      6
+#define ENC_LEFT_B_PIN      7
+#define ENC_RIGHT_A_PIN     1
+#define ENC_RIGHT_B_PIN     2
 
 #define ENC_PPR             2048
 #define ENC_COUNTS_PER_REV  (ENC_PPR * 4)
@@ -22,10 +22,10 @@
 #define MM_PER_COUNT        (3.14159265f * ENC_WHEEL_DIAM_MM / ENC_COUNTS_PER_REV)
 
 // ─── MOTEURS PAS À PAS (roues de traction ∅60 mm) ────────────────────────────
-#define STEPPER_L_STEP_PIN  18
-#define STEPPER_L_DIR_PIN   20
-#define STEPPER_R_STEP_PIN  17
-#define STEPPER_R_DIR_PIN   3
+#define STEPPER_L_STEP_PIN  12
+#define STEPPER_L_DIR_PIN   13
+#define STEPPER_R_STEP_PIN  11
+#define STEPPER_R_DIR_PIN   10
 #define STEPPER_EN_PIN      21        // LOW = activé (commun aux deux)
 #define STEPPER_L_INVERT    false     // inverser sens logique moteur gauche
 #define STEPPER_R_INVERT    true      // inverser sens logique moteur droit
