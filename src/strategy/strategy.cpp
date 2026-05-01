@@ -15,28 +15,70 @@
 //  robot.disableObstacle()              désactive détection adversaire
 //  robot.enableObstacle()               réactive détection adversaire
 //
-//  Repère : X+ = avant initial, Y+ = gauche, angle 0° = avant
-//  Table  : 2000 mm × 3000 mm
+//  Repère table : origine coin haut-gauche
+//                X+ = droite (3000 mm), Y+ = bas (2000 mm)
+//                angle 0° = droite (+X), 90° = haut (-Y), sens positif = anti-horaire
+//  Table  : 3000 mm × 2000 mm
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include "strategy.h"
 
-void runStrategy(Robot &robot) {
-    robot.disableObstacle(); 
+// ─── Calage bordure jaune ─────────────────────────────────────────────────────
+void runInitYellow(Robot &robot) {
+    robot.disableObstacle();
+    robot.go(-20);
+    // TODO: plaquer contre les deux bordures côté jaune et enregistrer la pose réelle
+    robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 900, 0);
+}
 
-    // ── Recalage initial ─────────────────────────────────────────────────────
-    robot.setPosition(0, 0, 0);         // robot en (0,0), orienté vers X+
+// ─── Calage bordure bleu ──────────────────────────────────────────────────────
+void runInitBlue(Robot &robot) {
+    robot.disableObstacle();
+    robot.go(-20);
+    // TODO: plaquer contre les deux bordures côté bleu (symétrique jaune)
+    robot.setPosition(TABLE_WIDTH_MM / 2, TABLE_HEIGHT_MM / 2, 0);
+}
 
-    // ── Exemple de séquence ──────────────────────────────────────────────────
-    robot.go(500);                      // avance 500 mm
-    robot.turn(-90);                    // tourne à droite 90°
-    robot.go(300);                      // avance 300 mm
+// ─── Test détection obstacle ──────────────────────────────────────────────────
+// Le robot fait des allers-retours indéfiniment.
+// Placer un objet devant ou derrière pour valider l'arrêt dans chaque sens.
+void runTestObstacle(Robot &robot) {
+    robot.enableObstacle();
+    robot.setPosition(0, 0, 0);
 
-    //robot.disableObstacle();            // passage en zone connue sans adversaire
-    robot.go(200);
-    //robot.enableObstacle();
+    for (;;) {
+        robot.go( 1500);                    // avance — détection avant
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        robot.go(-1500);                    // recule — détection arrière
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
 
-    robot.gotoXY(1000, 500);            // va en absolu (sans contrainte d'angle)
-    robot.gotoXY(0, 0, 180);           // retour origine, orienté à 180°
+// ─── Stratégie jaune ──────────────────────────────────────────────────────────
+void runStrategyYellow(Robot &robot) {
+    robot.enableObstacle();
+    robot.setPosition(0, 0, 0);
 
+    robot.go(500);
+    robot.turn(-90);
+    robot.turn(90);
+
+    robot.gotoXY(1000, 500);
+    robot.gotoXY(500, 500, 180);
+
+    robot.disableMotors();
+}
+
+// ─── Stratégie bleue ─────────────────────────────────────────────────────────
+void runStrategyBlue(Robot &robot) {
+    robot.enableObstacle();
+    robot.setPosition(0, 0, 0);
+
+    robot.go(500);
+    robot.turn(90);
+
+    robot.gotoXY(1000, -500);
+    robot.gotoXY(0, 0, 180);
+
+    robot.disableMotors();
 }

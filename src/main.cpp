@@ -6,10 +6,12 @@
 #include "strategy/robot.h"
 #include "strategy/strategy.h"
 #include "display/oled.h"
+#include "io/buttons.h"
+#include "io/leds.h"
 
 // ─── Instances globales ───────────────────────────────────────────────────────
 
-static LD06         lidar(Serial1, LIDAR_RX_PIN, LIDAR_TX_PIN, LIDAR_PWM_PIN);
+static LD06         lidar(Serial1, LIDAR_RX_PIN, -1, LIDAR_PWM_PIN);
 static StepControl  motion;
 static Robot        robot(motion, lidar);
 
@@ -29,9 +31,56 @@ static void taskLidar(void *) {
 // ─── Tâche Strategy (Core 1, prio 2) ─────────────────────────────────────────
 
 static void taskStrategy(void *) {
-    vTaskDelay(pdMS_TO_TICKS(2000));    // attend stabilisation LIDAR au démarrage
-    gDisplay.robot_state = RobotState::IDLE;
-    runStrategy(robot);
+    // ── Phase pré-match ───────────────────────────────────────────────────────
+    gDisplay.team = teamSwitch();
+    ledsSetTeam(gDisplay.team);
+    gDisplay.robot_state = RobotState::WAIT_INIT;
+
+    // États : WAIT_INIT → WAIT_TIRETTE_IN → WAIT_TIRETTE_OUT → match
+    enum class Phase : uint8_t { WAIT_INIT, WAIT_TIRETTE_IN, WAIT_TIRETTE_OUT };
+    Phase phase = Phase::WAIT_INIT;
+
+    // Condition de sortie : tirette retirée après init + mise en place
+    while (phase != Phase::WAIT_TIRETTE_OUT || !tirette()) {
+
+        // Switch d'équipe lu en continu ; changement = init à refaire
+        Team t = teamSwitch();
+        if (t != gDisplay.team) {
+            gDisplay.team = t;
+            ledsSetTeam(t);
+            phase = Phase::WAIT_INIT;
+            gDisplay.robot_state = RobotState::WAIT_INIT;
+        }
+
+        switch (phase) {
+        case Phase::WAIT_INIT:
+            if (initPressed()) {
+                gDisplay.robot_state = RobotState::INIT;
+                if (gDisplay.team == Team::YELLOW) runInitYellow(robot);
+                else                               runInitBlue(robot);
+                phase = Phase::WAIT_TIRETTE_IN;
+                gDisplay.robot_state = RobotState::WAIT_TIRETTE_IN;
+            }
+            break;
+
+        case Phase::WAIT_TIRETTE_IN:
+            if (!tirette()) {
+                phase = Phase::WAIT_TIRETTE_OUT;
+                gDisplay.robot_state = RobotState::WAIT_TIRETTE_OUT;
+            }
+            break;
+
+        case Phase::WAIT_TIRETTE_OUT:
+            break;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
+    // ── Match ─────────────────────────────────────────────────────────────────
+    if (gDisplay.team == Team::YELLOW) runStrategyYellow(robot);
+    else                               runStrategyBlue(robot);
+
     gDisplay.robot_state = RobotState::DONE;
     ESP_LOGI("MAIN", "Stratégie terminée");
     vTaskDelete(nullptr);
@@ -49,6 +98,9 @@ void setup() {
         while (true) vTaskDelay(1000);
     }
 
+    buttonsInit();
+    ledsInit();
+
     displayStart();
 
     xTaskCreatePinnedToCore(taskLidar,    "lidar",    TASK_LIDAR_STACK,
@@ -63,6 +115,7 @@ void setup() {
 void loop() {
     static uint32_t lastSend  = 0;
     static uint32_t lastStats = 0;
+    static uint32_t lastLed   = 0;
     uint32_t now = millis();
 
     // Mise à jour données écran
@@ -71,7 +124,14 @@ void loop() {
     gDisplay.pose_y_mm      = motion.getY();
     gDisplay.pose_theta_deg = motion.getThetaDeg();
 
-    // Envoi Teleplot LIDAR (1 pt / 2, toutes les 500 ms)
+    // LEDs LIDAR — rafraîchissement rapide (100 ms)
+    if (now - lastLed >= 100) {
+        lastLed = now;
+        uint16_t n = lidar.getScan(scanBuf, LD06_SCAN_BUF_SIZE);
+        ledsUpdateLidar(scanBuf, n);
+    }
+
+    // Teleplot (500 ms)
     if (now - lastSend >= 500) {
         lastSend = now;
         uint16_t n = lidar.getScan(scanBuf, LD06_SCAN_BUF_SIZE);

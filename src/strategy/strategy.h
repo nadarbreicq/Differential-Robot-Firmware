@@ -1,6 +1,14 @@
 #pragma once
 #include "robot.h"
+#include "../config.h"
 
-// Point d'entrée de la stratégie — appelé une seule fois depuis la tâche strategy.
-// Modifier strategy.cpp pour définir le comportement du robot.
-void runStrategy(Robot &robot);
+// ─── Calage bordure (à appeler avant la mise en place sur table) ─────────────
+void runInitYellow(Robot &robot);
+void runInitBlue(Robot &robot);
+
+// ─── Stratégie de match ───────────────────────────────────────────────────────
+void runStrategyYellow(Robot &robot);
+void runStrategyBlue(Robot &robot);
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+void runTestObstacle(Robot &robot);

@@ -1,6 +1,7 @@
 #include "step_control.h"
 #include <math.h>
 #include "esp_log.h"
+#include "driver/gpio.h"
 
 static const char *TAG = "STEP";
 
@@ -19,6 +20,12 @@ bool StepControl::begin() {
     _stepR->setEnablePin(STEPPER_EN_PIN, true);
     _stepL->enableOutputs();
     _stepR->enableOutputs();
+
+    // Drive strength maximale (40 mA) sur tous les pins de commande moteur
+    gpio_set_drive_capability((gpio_num_t)STEPPER_L_STEP_PIN, GPIO_DRIVE_CAP_3);
+    gpio_set_drive_capability((gpio_num_t)STEPPER_L_DIR_PIN,  GPIO_DRIVE_CAP_3);
+    gpio_set_drive_capability((gpio_num_t)STEPPER_R_STEP_PIN, GPIO_DRIVE_CAP_3);
+    gpio_set_drive_capability((gpio_num_t)STEPPER_R_DIR_PIN,  GPIO_DRIVE_CAP_3);
 
     _applySpeed();
     _refL = _stepL->getCurrentPosition();
@@ -81,6 +88,28 @@ void StepControl::stop() {
     _stepR->forceStopAndNewPosition(_stepR->getCurrentPosition());
 }
 
+void StepControl::disableMotors() {
+    _stepL->disableOutputs();
+    _stepR->disableOutputs();
+}
+
+void StepControl::enableMotors() {
+    _stepL->enableOutputs();
+    _stepR->enableOutputs();
+}
+
+void StepControl::softStop(float accelOverride) {
+    if (accelOverride > 0) {
+        uint32_t a = (uint32_t)(accelOverride * STEPS_PER_MM);
+        _stepL->setAcceleration(a);
+        _stepR->setAcceleration(a);
+    }
+    _stepL->stopMove();
+    _stepR->stopMove();
+    _waitDone();
+    syncPose();
+}
+
 // ─── Pose ─────────────────────────────────────────────────────────────────────
 
 void StepControl::syncPose() {
@@ -130,7 +159,7 @@ void StepControl::_updatePoseFromDelta(float leftMm, float rightMm) {
     float dTheta = (rightMm - leftMm) / WHEELBASE_MM;
     float mid    = _theta + dTheta * 0.5f;
     _x     += dDist * cosf(mid);
-    _y     += dDist * sinf(mid);
+    _y     -= dDist * sinf(mid);   // Y+ vers le bas → sin inversé
     _theta += dTheta;
     while (_theta >  3.14159265f) _theta -= 2.0f * 3.14159265f;
     while (_theta < -3.14159265f) _theta += 2.0f * 3.14159265f;

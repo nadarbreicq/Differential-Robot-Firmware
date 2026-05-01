@@ -24,9 +24,19 @@ public:
     void setSpeed(float mmS);
 
     // ── Détection obstacle ───────────────────────────────────────────────────
+    enum class DetectMode : uint8_t {
+        SIMPLE,        // distance brute dans un rectangle — pas de filtre murs
+        WALL_FILTERED, // filtre les points identifiés comme murs (nécessite pose réelle)
+    };
+
     void enableObstacle()             { _obstacleEn = true;  }
     void disableObstacle()            { _obstacleEn = false; }
     bool obstacleEnabled() const      { return _obstacleEn; }
+    void setDetectMode(DetectMode m)  { _detectMode = m; }
+
+    // ── Moteurs ──────────────────────────────────────────────────────────────
+    void disableMotors()  { _motion.disableMotors(); }
+    void enableMotors()   { _motion.enableMotors();  }
 
     // ── Accesseurs état ──────────────────────────────────────────────────────
     float getX()        const { return _motion.getX(); }
@@ -37,15 +47,15 @@ public:
 private:
     StepControl &_motion;
     LD06        &_lidar;
-    bool         _obstacleEn = true;
+    bool         _obstacleEn  = true;
+    DetectMode   _detectMode  = DetectMode::SIMPLE;
 
     LidarPoint   _scanBuf[LD06_SCAN_BUF_SIZE];
 
-    // Retourne true si un obstacle est détecté dans le sens de déplacement
-    // dir_rad : direction du mouvement en radians (repère monde)
     bool _obstacleInDir(float dir_rad);
+    bool _obstacleSimple(float dir_rad);       // sans filtre murs
+    bool _obstacleWallFiltered(float dir_rad); // avec filtre murs (pose réelle requise)
 
-    // Transforme un point LIDAR (angle en °, dist en mm) en coordonnées monde
     void _lidarToWorld(float angle_deg, float dist_mm,
                        float &wx, float &wy) const;
 

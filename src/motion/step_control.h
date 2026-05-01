@@ -17,7 +17,10 @@ public:
     void startGo(float mm);
     void startTurn(float deg);
     bool isMoving() const;
-    void stop();
+    void stop();                            // arrêt immédiat (force)
+    void softStop(float accelOverride = 0); // arrêt avec décélération (override optionnel)
+    void disableMotors();                   // désactive les moteurs (EN HIGH)
+    void enableMotors();                    // réactive les moteurs (EN LOW)
 
     // ── Mise à jour pose depuis les pas actuels ───────────────────────────────
     // À appeler après stop() ou en cours de mouvement pour garder la pose à jour
@@ -31,8 +34,10 @@ public:
     float getThetaDeg() const { return _theta * 57.2957795f; }
 
     // ── Cinématique ───────────────────────────────────────────────────────────
-    void setSpeed(float mmS);
-    void setAcceleration(float mmS2);
+    void  setSpeed(float mmS);
+    void  setAcceleration(float mmS2);
+    float getSpeed()        const { return _speed; }
+    float getAcceleration() const { return _accel; }
 
 private:
     FastAccelStepperEngine _engine;
