@@ -130,12 +130,13 @@ void setup() {
                             nullptr, TASK_STRATEGY_PRIO, nullptr, TASK_STRATEGY_CORE);
 }
 
-// ─── Loop : Teleplot + mise à jour affichage ─────────────────────────────────
+// ─── Loop : LEDs + Teleplot + affichage ──────────────────────────────────────
 
 void loop() {
-    static uint32_t lastSend  = 0;
-    static uint32_t lastStats = 0;
-    static uint32_t lastLed   = 0;
+    static uint32_t lastLed       = 0;
+    static uint32_t lastLidarPlot = 0;
+    static uint32_t lastPosePlot  = 0;
+    static uint32_t lastStats     = 0;
     uint32_t now = millis();
 
     // Mise à jour données écran
@@ -144,19 +145,19 @@ void loop() {
     gDisplay.pose_y_mm      = motion.getY();
     gDisplay.pose_theta_deg = motion.getThetaDeg();
 
-    // LEDs LIDAR — rafraîchissement rapide (100 ms)
+    // LEDs LIDAR — toujours actif (100 ms)
     if (now - lastLed >= 100) {
         lastLed = now;
         uint16_t n = lidar.getScan(scanBuf, LD06_SCAN_BUF_SIZE);
+        gDisplay.lidar_pts = n;
         ledsUpdateLidar(scanBuf, n);
     }
 
-    // Teleplot (500 ms)
-    if (now - lastSend >= 500) {
-        lastSend = now;
+    // Teleplot LIDAR — uniquement en phase WAIT_INIT (200 ms)
+    if (gDisplay.robot_state == RobotState::WAIT_INIT &&
+        now - lastLidarPlot >= 200) {
+        lastLidarPlot = now;
         uint16_t n = lidar.getScan(scanBuf, LD06_SCAN_BUF_SIZE);
-        gDisplay.lidar_pts = n;
-
         for (uint16_t i = 0; i < n; i += 2) {
             if (scanBuf[i].distance_mm == 0)   continue;
             if (scanBuf[i].confidence  < 100)  continue;
@@ -166,8 +167,14 @@ void loop() {
                           -scanBuf[i].distance_mm * cosf(rad),
                            scanBuf[i].distance_mm * sinf(rad));
         }
+    }
 
-        // Pose robot sur Teleplot
+    // Teleplot pose robot — pendant le match (500 ms)
+    if (gDisplay.robot_state != RobotState::WAIT_INIT &&
+        gDisplay.robot_state != RobotState::WAIT_TIRETTE_IN &&
+        gDisplay.robot_state != RobotState::WAIT_TIRETTE_OUT &&
+        now - lastPosePlot >= 500) {
+        lastPosePlot = now;
         Serial.printf(">robot_x:%.0f\n", motion.getX());
         Serial.printf(">robot_y:%.0f\n", motion.getY());
         Serial.printf(">robot_theta:%.1f\n", motion.getThetaDeg());

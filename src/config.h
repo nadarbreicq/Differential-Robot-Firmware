@@ -43,10 +43,10 @@
 #define ROBOT_FRONT_TO_CENTER_MM (ROBOT_LENGTH_MM - ROBOT_BACK_TO_CENTER_MM)
 
 // ─── CINÉMATIQUE ─────────────────────────────────────────────────────────────
-#define DEFAULT_SPEED_MMS   200.0f    // mm/s
-#define DEFAULT_ACCEL_MMS2  150.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
-#define TURN_SPEED_MMS      160.0f
-#define TURN_ACCEL_MMS2     120.0f
+#define DEFAULT_SPEED_MMS   800.0f    // mm/s
+#define DEFAULT_ACCEL_MMS2  400.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
+#define TURN_SPEED_MMS      200.0f
+#define TURN_ACCEL_MMS2     100.0f
 
 // ─── TABLE DE JEU ────────────────────────────────────────────────────────────
 #define TABLE_WIDTH_MM      3000.0f   // axe X (horizontal)
@@ -58,7 +58,7 @@
 
 #define OBS_DETECT_DIST_MM  400.0f    // distance de détection devant/derrière
 #define OBS_WIDTH_MM        200.0f    // largeur zone de détection (≥ largeur robot)
-#define OBS_MIN_DIST_MM     30.0f     // distance projetée min dans la zone obstacle
+#define OBS_MIN_DIST_MM     60.0f     // distance projetée min dans la zone obstacle
 #define OBS_CONFIDENCE_MIN  100       // seuil confiance point LIDAR
 #define OBS_WAIT_MS          3000     // timeout attente dégagement adversaire (ms)
 #define OBS_POLL_MS            20     // période vérification obstacle pendant go()

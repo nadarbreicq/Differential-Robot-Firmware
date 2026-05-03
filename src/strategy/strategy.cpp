@@ -28,6 +28,7 @@
 void runInitYellow(Robot &robot) {
     robot.enableMotors();
     robot.disableObstacle();
+    initActuators();
     robot.go(-20);
     // TODO: plaquer contre les deux bordures côté jaune et enregistrer la pose réelle
     robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 900, 0);
@@ -37,6 +38,7 @@ void runInitYellow(Robot &robot) {
 void runInitBlue(Robot &robot) {
     robot.enableMotors();
     robot.disableObstacle();
+    initActuators();
     robot.go(-20);
     // TODO: plaquer contre les deux bordures côté bleu (symétrique jaune)
     robot.setPosition(TABLE_WIDTH_MM / 2, TABLE_HEIGHT_MM / 2, 0);
@@ -46,14 +48,14 @@ void runInitBlue(Robot &robot) {
 void runStrategyYellow(Robot &robot) {
     robot.enableObstacle();
 
-    robot.go(500);
-    deployerBras();              // déploie le bras à 150° à 60°/s
+    robot.go(1000);
+    deployerBrasDroit();              // déploie le bras à 150° à 60°/s
 
-    robot.go(300);
-    retracteBras();              // rétracte à 10° à 60°/s
+    robot.go(-800);
+    retracteBrasDroit();              // rétracte à 10° à 60°/s
 
-    robot.gotoXY(1000, 500);
-    servoBras.moveTo(90, 30);   // ou directement : 90° à 30°/s
+    robot.gotoXY(500, 500);
+    //servoBras.moveTo(90, 30);   // ou directement : 90° à 30°/s
 
     robot.disableMotors();
 }

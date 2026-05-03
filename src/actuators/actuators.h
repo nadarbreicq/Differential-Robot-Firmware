@@ -43,8 +43,12 @@ bool actuatorsInit();
 void actuatorsDisable();   // détache tous les servos, remet PCF au repos
 
 // ─── Servomoteurs ─────────────────────────────────────────────────────────────
-extern Servo servoBras;
+extern Servo servoBrasDroit;
+extern Servo servoBrasGauche;
 
 // ─── Séquences d'actionneurs ──────────────────────────────────────────────────
-void deployerBras();
-void retracteBras();
+void initActuators();
+void deployerBrasDroit();
+void retracteBrasDroit();
+void deployerBrasGauche();
+void retracteBrasGauche();
