@@ -12,6 +12,20 @@ static constexpr float RAD2DEG = 180.0f / PI_F;
 Robot::Robot(StepControl &motion, LD06 &lidar)
     : _motion(motion), _lidar(lidar) {}
 
+// ─── Chrono de match ──────────────────────────────────────────────────────────
+
+void Robot::startMatch() {
+    gDisplay.match_start_ms = millis();
+}
+
+uint32_t Robot::matchElapsed() const {
+    if (gDisplay.match_start_ms == 0) return 0;
+    return millis() - gDisplay.match_start_ms;
+}
+
+bool Robot::isEndgame()   const { return matchElapsed() >= MATCH_ENDGAME_MS;  }
+bool Robot::isMatchOver() const { return matchElapsed() >= MATCH_DURATION_MS; }
+
 // ─── Déplacements ─────────────────────────────────────────────────────────────
 
 void Robot::go(float mm) {
@@ -21,7 +35,9 @@ void Robot::go(float mm) {
     float savedSpeed = _motion.getSpeed();
     float savedAccel = _motion.getAcceleration();
 
-    while (fabsf(remaining) > 0.5f) {
+    bool endgameFired = false;
+
+    while (fabsf(remaining) > 0.5f && !endgameFired) {
         gDisplay.robot_state = RobotState::MOVING;
         float dir = _motion.getTheta() + (remaining < 0 ? PI_F : 0.0f);
         float x0  = _motion.getX();
@@ -34,8 +50,24 @@ void Robot::go(float mm) {
         bool obsHit = false;
         while (_motion.isMoving()) {
             vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
+            _motion.syncPose();
+
+            if (isMatchOver()) {
+                _motion.softStop(OBS_STOP_ACCEL_MMS2);
+                disableMotors();
+                gDisplay.robot_state = RobotState::DONE;
+                vTaskDelete(nullptr);   // fin de match : on supprime la tâche stratégie
+                return;
+            }
+
+            if (isEndgame()) {
+                _motion.softStop(OBS_STOP_ACCEL_MMS2);
+                endgameFired = true;
+                break;
+            }
+
             if (_obstacleEn && _obstacleInDir(dir)) {
-                _motion.softStop(OBS_STOP_ACCEL_MMS2);   // freinage agressif
+                _motion.softStop(OBS_STOP_ACCEL_MMS2);
                 obsHit = true;
                 break;
             }
@@ -67,6 +99,7 @@ void Robot::go(float mm) {
 
 void Robot::turn(float deg) {
     if (fabsf(deg) < 0.5f) return;
+    if (isEndgame() || isMatchOver()) return;
     gDisplay.robot_state = RobotState::TURNING;
     _motion.turn(deg);
     gDisplay.robot_state = RobotState::IDLE;

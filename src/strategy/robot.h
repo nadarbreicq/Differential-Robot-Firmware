@@ -38,6 +38,12 @@ public:
     void disableMotors()  { _motion.disableMotors(); }
     void enableMotors()   { _motion.enableMotors();  }
 
+    // ── Chrono de match ──────────────────────────────────────────────────────
+    void     startMatch();
+    uint32_t matchElapsed() const;
+    bool     isEndgame()    const;
+    bool     isMatchOver()  const;
+
     // ── Accesseurs état ──────────────────────────────────────────────────────
     float getX()        const { return _motion.getX(); }
     float getY()        const { return _motion.getY(); }

@@ -66,6 +66,14 @@
 #define OBS_STOP_ACCEL_MMS2 2000.0f   // décélération d'urgence (freinage agressif)
 #define LIDAR_LED_DIST_MM   OBS_DETECT_DIST_MM  // seuil LEDs = seuil détection robot
 
+// ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────
+#define MATCH_DURATION_MS  100000UL   // durée totale du match (100 s)
+#define MATCH_ENDGAME_MS    80000UL   // déclenchement repli fin de match (80 s)
+
+// ─── ACTIONNEURS I2C ─────────────────────────────────────────────────────────
+#define PCA9685_I2C_ADDR    0x40   // adresse PCA9685 (A0-A5 = GND)
+#define PCF8574_I2C_ADDR    0x20   // adresse PCF8574 (A0-A2 = GND)
+
 // ─── ÉCRAN SSD1306 I2C ───────────────────────────────────────────────────────
 #define DISPLAY_SCL_PIN     4
 #define DISPLAY_SDA_PIN     5

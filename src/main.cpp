@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <math.h>
+#include <Wire.h>
 #include "config.h"
 #include "lidar/ld06.h"
 #include "motion/step_control.h"
@@ -8,6 +9,7 @@
 #include "display/oled.h"
 #include "io/buttons.h"
 #include "io/leds.h"
+#include "actuators/actuators.h"
 
 // ─── Instances globales ───────────────────────────────────────────────────────
 
@@ -32,6 +34,7 @@ static void taskLidar(void *) {
 
 static void taskStrategy(void *) {
     // ── Phase pré-match ───────────────────────────────────────────────────────
+    robot.disableMotors();   // moteurs libres pendant le positionnement
     gDisplay.team = teamSwitch();
     ledsSetTeam(gDisplay.team);
     gDisplay.robot_state = RobotState::WAIT_INIT;
@@ -78,11 +81,24 @@ static void taskStrategy(void *) {
     }
 
     // ── Match ─────────────────────────────────────────────────────────────────
+    robot.startMatch();
+
     if (gDisplay.team == Team::YELLOW) runStrategyYellow(robot);
     else                               runStrategyBlue(robot);
 
+    // ── Repli fin de match (si on est dans la fenêtre 80-100 s) ───────────────
+    if (robot.isEndgame() && !robot.isMatchOver()) {
+        gDisplay.robot_state = RobotState::ENDGAME;
+        if (gDisplay.team == Team::YELLOW) runNearEndYellow(robot);
+        else                               runNearEndBlue(robot);
+    }
+
+    // ── Attente fin de match puis désengagement ────────────────────────────────
+    while (!robot.isMatchOver()) vTaskDelay(pdMS_TO_TICKS(50));
+    robot.disableMotors();
+    actuatorsDisable();
     gDisplay.robot_state = RobotState::DONE;
-    ESP_LOGI("MAIN", "Stratégie terminée");
+    ESP_LOGI("MAIN", "Match terminé");
     vTaskDelete(nullptr);
 }
 
@@ -93,6 +109,9 @@ void setup() {
     delay(200);
     Serial.println("=== DifferentialRobot ===");
 
+    Wire.begin(DISPLAY_SDA_PIN, DISPLAY_SCL_PIN);
+    Wire.setClock(400000);
+
     if (!motion.begin()) {
         Serial.println("[ERREUR] motion.begin() failed");
         while (true) vTaskDelay(1000);
@@ -100,6 +119,7 @@ void setup() {
 
     buttonsInit();
     ledsInit();
+    actuatorsInit();
 
     displayStart();
 

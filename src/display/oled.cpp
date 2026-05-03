@@ -113,9 +113,12 @@ static void render() {
         snprintf(buf, sizeof(buf), "Cap: %6.1f deg", (double)gDisplay.pose_theta_deg);
         u8g2.drawStr(0, 49, buf);
 
-        snprintf(buf, sizeof(buf), "L:%s C0:%2u%% C1:%2u%%",
+        uint32_t elapsed = (gDisplay.match_start_ms > 0)
+                         ? (millis() - gDisplay.match_start_ms) / 1000 : 0;
+        uint32_t remain  = (elapsed < 100) ? (100 - elapsed) : 0;
+        snprintf(buf, sizeof(buf), "L:%s %2lus C0:%2u%%",
                  gDisplay.lidar_ok ? "OK" : "--",
-                 gDisplay.cpu0_pct, gDisplay.cpu1_pct);
+                 remain, gDisplay.cpu0_pct);
         u8g2.drawStr(0, 61, buf);
     }
 
@@ -138,9 +141,6 @@ static void taskDisplay(void *) {
 void displayStart() {
     esp_register_freertos_idle_hook_for_cpu(idleHook0, 0);
     esp_register_freertos_idle_hook_for_cpu(idleHook1, 1);
-
-    Wire.begin(DISPLAY_SDA_PIN, DISPLAY_SCL_PIN);
-    Wire.setClock(400000);
 
     if (!u8g2.begin()) return;   // écran absent : on ne lance pas la tâche
     u8g2.setContrast(128);

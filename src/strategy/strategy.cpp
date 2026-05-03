@@ -22,9 +22,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include "strategy.h"
+#include "../actuators/actuators.h"
 
 // ─── Calage bordure jaune ─────────────────────────────────────────────────────
 void runInitYellow(Robot &robot) {
+    robot.enableMotors();
     robot.disableObstacle();
     robot.go(-20);
     // TODO: plaquer contre les deux bordures côté jaune et enregistrer la pose réelle
@@ -33,38 +35,25 @@ void runInitYellow(Robot &robot) {
 
 // ─── Calage bordure bleu ──────────────────────────────────────────────────────
 void runInitBlue(Robot &robot) {
+    robot.enableMotors();
     robot.disableObstacle();
     robot.go(-20);
     // TODO: plaquer contre les deux bordures côté bleu (symétrique jaune)
     robot.setPosition(TABLE_WIDTH_MM / 2, TABLE_HEIGHT_MM / 2, 0);
 }
 
-// ─── Test détection obstacle ──────────────────────────────────────────────────
-// Le robot fait des allers-retours indéfiniment.
-// Placer un objet devant ou derrière pour valider l'arrêt dans chaque sens.
-void runTestObstacle(Robot &robot) {
-    robot.enableObstacle();
-    robot.setPosition(0, 0, 0);
-
-    for (;;) {
-        robot.go( 1500);                    // avance — détection avant
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        robot.go(-1500);                    // recule — détection arrière
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
 // ─── Stratégie jaune ──────────────────────────────────────────────────────────
 void runStrategyYellow(Robot &robot) {
     robot.enableObstacle();
-    robot.setPosition(0, 0, 0);
 
     robot.go(500);
-    robot.turn(-90);
-    robot.turn(90);
+    deployerBras();              // déploie le bras à 150° à 60°/s
+
+    robot.go(300);
+    retracteBras();              // rétracte à 10° à 60°/s
 
     robot.gotoXY(1000, 500);
-    robot.gotoXY(500, 500, 180);
+    servoBras.moveTo(90, 30);   // ou directement : 90° à 30°/s
 
     robot.disableMotors();
 }
@@ -72,13 +61,26 @@ void runStrategyYellow(Robot &robot) {
 // ─── Stratégie bleue ─────────────────────────────────────────────────────────
 void runStrategyBlue(Robot &robot) {
     robot.enableObstacle();
-    robot.setPosition(0, 0, 0);
 
     robot.go(500);
     robot.turn(90);
 
-    robot.gotoXY(1000, -500);
+    robot.gotoXY(1000, 500);
     robot.gotoXY(0, 0, 180);
 
+    robot.disableMotors();
+}
+
+// ─── Repli fin de match jaune ─────────────────────────────────────────────────
+void runNearEndYellow(Robot &robot) {
+    robot.disableObstacle();
+    // TODO: position de sécurité côté jaune
+    robot.disableMotors();
+}
+
+// ─── Repli fin de match bleu ──────────────────────────────────────────────────
+void runNearEndBlue(Robot &robot) {
+    robot.disableObstacle();
+    // TODO: position de sécurité côté bleu
     robot.disableMotors();
 }

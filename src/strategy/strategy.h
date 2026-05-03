@@ -10,5 +10,7 @@ void runInitBlue(Robot &robot);
 void runStrategyYellow(Robot &robot);
 void runStrategyBlue(Robot &robot);
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
-void runTestObstacle(Robot &robot);
+// ─── Repli fin de match (déclenché à MATCH_ENDGAME_MS) ───────────────────────
+void runNearEndYellow(Robot &robot);
+void runNearEndBlue(Robot &robot);
+

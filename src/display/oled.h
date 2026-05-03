@@ -12,6 +12,7 @@ enum class RobotState : uint8_t {
     TURNING,
     GOTO,
     OBSTACLE,
+    ENDGAME,            // repli fin de match en cours
     DONE,
     ERROR
 };
@@ -27,6 +28,7 @@ static inline const char* robotStateStr(RobotState s) {
         case RobotState::TURNING:         return "TOURNE";
         case RobotState::GOTO:            return "GOTO";
         case RobotState::OBSTACLE:        return "OBSTACLE!";
+        case RobotState::ENDGAME:         return "REPLI !";
         case RobotState::DONE:            return "MATCH FINI";
         case RobotState::ERROR:           return "ERREUR";
         default:                          return "?";
@@ -49,6 +51,7 @@ struct DisplayData {
     // Obstacle détecté (mis à jour par robot.cpp)
     volatile float      obs_dist_mm;
     volatile float      obs_angle_deg;  // repère robot : 0°=avant, +90°=gauche
+    volatile uint32_t   match_start_ms; // millis() au départ — 0 = pas démarré
 };
 
 extern DisplayData gDisplay;
