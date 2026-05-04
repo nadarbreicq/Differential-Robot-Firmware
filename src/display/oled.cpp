@@ -64,10 +64,15 @@ static void render() {
         uint8_t tw = u8g2.getStrWidth(teamStr);
         u8g2.drawStr((128 - tw) / 2, 44, teamStr);
 
-        // ── Statut LIDAR en bas ──────────────────────────────────────────────
+        // ── Encodeur droit (test) + LIDAR ───────────────────────────────────
         u8g2.setFont(u8g2_font_6x10_tf);
+        if (s == RobotState::WAIT_INIT) {
+            float mm = gDisplay.enc_right_cnt * MM_PER_COUNT;
+            snprintf(buf, sizeof(buf), "EncR:%ld  %.1fmm", (long)gDisplay.enc_right_cnt, (double)mm);
+            u8g2.drawStr(0, 53, buf);
+        }
         snprintf(buf, sizeof(buf), "LIDAR: %s", gDisplay.lidar_ok ? "OK" : "--");
-        u8g2.drawStr(0, 61, buf);
+        u8g2.drawStr(0, 63, buf);
     } else if (s == RobotState::OBSTACLE) {
         // ── Adversaire détecté ───────────────────────────────────────────────
         u8g2.setFont(u8g2_font_7x14B_tf);

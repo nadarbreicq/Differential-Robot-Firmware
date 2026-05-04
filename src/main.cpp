@@ -10,11 +10,13 @@
 #include "io/buttons.h"
 #include "io/leds.h"
 #include "actuators/actuators.h"
+#include "motion/encoder.h"
 
 // ─── Instances globales ───────────────────────────────────────────────────────
 
 static LD06         lidar(Serial1, LIDAR_RX_PIN, -1, LIDAR_PWM_PIN);
 static StepControl  motion;
+static QuadEncoder  encRight;
 static Robot        robot(motion, lidar);
 
 static LidarPoint   scanBuf[LD06_SCAN_BUF_SIZE];
@@ -35,6 +37,7 @@ static void taskLidar(void *) {
 static void taskStrategy(void *) {
     // ── Phase pré-match ───────────────────────────────────────────────────────
     robot.disableMotors();   // moteurs libres pendant le positionnement
+    encRight.init(ENC_RIGHT_A_PIN, ENC_RIGHT_B_PIN, PCNT_UNIT_2);  // après FastAccelStepper
     gDisplay.team = teamSwitch();
     ledsSetTeam(gDisplay.team);
     gDisplay.robot_state = RobotState::WAIT_INIT;
@@ -145,6 +148,12 @@ void loop() {
     gDisplay.pose_y_mm      = motion.getY();
     gDisplay.pose_theta_deg = motion.getThetaDeg();
 
+    // Encodeur droit — update 100 Hz (gère le rollover hardware)
+    encRight.update();
+    if (gDisplay.robot_state == RobotState::WAIT_INIT) {
+        gDisplay.enc_right_cnt = encRight.getCount();
+    }
+
     // LEDs LIDAR — toujours actif (100 ms)
     if (now - lastLed >= 100) {
         lastLed = now;
@@ -153,7 +162,7 @@ void loop() {
         ledsUpdateLidar(scanBuf, n);
     }
 
-    // Teleplot LIDAR — uniquement en phase WAIT_INIT (200 ms)
+    // Teleplot LIDAR + encodeur — uniquement en phase WAIT_INIT (200 ms)
     if (gDisplay.robot_state == RobotState::WAIT_INIT &&
         now - lastLidarPlot >= 200) {
         lastLidarPlot = now;
@@ -167,6 +176,8 @@ void loop() {
                           -scanBuf[i].distance_mm * cosf(rad),
                            scanBuf[i].distance_mm * sinf(rad));
         }
+        Serial.printf(">enc_R:%ld\n", (long)encRight.getCount());
+        Serial.printf(">enc_R_mm:%.2f\n", encRight.getCount() * MM_PER_COUNT);
     }
 
     // Teleplot pose robot — pendant le match (500 ms)

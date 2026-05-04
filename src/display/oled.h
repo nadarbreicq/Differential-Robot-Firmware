@@ -52,6 +52,7 @@ struct DisplayData {
     volatile float      obs_dist_mm;
     volatile float      obs_angle_deg;  // repère robot : 0°=avant, +90°=gauche
     volatile uint32_t   match_start_ms; // millis() au départ — 0 = pas démarré
+    volatile int32_t    enc_right_cnt;  // test encodeur droit (counts bruts)
 };
 
 extern DisplayData gDisplay;
