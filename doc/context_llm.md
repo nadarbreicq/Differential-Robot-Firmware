@@ -8,7 +8,9 @@ Ce document est destiné à un LLM pour comprendre rapidement le projet et aider
 
 Firmware ESP32-S3 pour robot différentiel de compétition (Coupe de France de Robotique).
 Langage : C++17, framework Arduino + FreeRTOS, build system PlatformIO.
-Moteurs : 2× pas-à-pas pilotés par FastAccelStepper. LIDAR : LD06 (série 230400 baud).
+Moteurs : 2× pas-à-pas pilotés par FastAccelStepper (dead reckoning pur).
+Encodeurs : roues codeuses passives AMT102V sur PCNT ESP32-S3 — utilisés pour affichage/calibration uniquement, pas pour l'odométrie de navigation.
+LIDAR : LD06 (série 230400 baud). Actionneurs I2C : PCA9685 (servos) + PCF8574 (GPIO).
 
 ---
 
@@ -16,23 +18,29 @@ Moteurs : 2× pas-à-pas pilotés par FastAccelStepper. LIDAR : LD06 (série 230
 
 ```
 src/
-├── main.cpp                  # Setup, loop, tâches FreeRTOS
+├── main.cpp                  # Setup, loop, tâches FreeRTOS, instances globales
 ├── config.h                  # TOUTES les constantes matériel/algo
+├── utils.h                   # wait(ms) — délai FreeRTOS portable
 ├── display/
-│   ├── oled.h                # DisplayData struct, RobotState enum, robotStateStr()
+│   ├── oled.h                # DisplayData struct, RobotState enum
 │   └── oled.cpp              # Rendu SSD1306 via U8g2, mesure CPU
 ├── io/
 │   ├── buttons.h/cpp         # tirette(), teamSwitch(), initPressed()
 │   └── leds.h/cpp            # ledsInit(), ledsSetTeam(), ledsUpdateLidar()
 ├── lidar/
-│   ├── ld06.h/cpp            # Driver LD06 : parsing UART, buffer scan thread-safe
+│   └── ld06.h/cpp            # Driver LD06 : parsing UART, buffer scan thread-safe
 ├── motion/
 │   ├── step_control.h/cpp    # Contrôle moteurs + dead reckoning (pose X/Y/theta)
-│   ├── stepper_ctrl.h/cpp    # Variante avec encodeurs (non utilisée actuellement)
-│   └── encoder.h/cpp         # Interface encodeurs PCNT ESP32
+│   └── encoder.h/cpp         # QuadEncoder : PCNT hardware ESP32-S3
+├── actuators/
+│   ├── pca9685.h/cpp         # Driver PCA9685 I2C (16 canaux PWM servo)
+│   ├── pcf8574.h/cpp         # Driver PCF8574 I2C (8 I/O numériques)
+│   ├── servo.h/cpp           # Classe Servo (angle, %, vitesse)
+│   ├── actuators.h           # Déclarations instances + séquences — À ÉDITER
+│   └── actuators.cpp         # Définitions + séquences d'actionneurs — À ÉDITER
 └── strategy/
-    ├── robot.h/cpp           # API haut niveau Robot (go/turn/gotoXY + obstacle)
-    ├── strategy.h/cpp        # Fonctions stratégie utilisateur (à modifier)
+    ├── robot.h/cpp           # API haut niveau Robot (go/turn/gotoXY/obstacle/chrono)
+    ├── strategy.h/cpp        # Fonctions stratégie utilisateur — À ÉDITER
 ```
 
 ---
@@ -42,66 +50,82 @@ src/
 ```c
 // LIDAR
 LIDAR_RX_PIN=9, LIDAR_PWM_PIN=8, LIDAR_PWM_DUTY=192 (~3600 RPM)
-LIDAR_OFFSET_DEG=0.0f   // offset fin ; la correction 270°-angle est dans le code
+LIDAR_OFFSET_DEG=0.0f   // offset fin ; correction 270°-angle dans le code
+LIDAR_BODY_DIST_MM=80   // filtre points < 80mm (intérieur robot)
 
-// Moteurs (pins après échange gauche/droite suite à debug)
-STEPPER_R_STEP_PIN=12, STEPPER_R_DIR_PIN=13  // moteur DROIT
-STEPPER_L_STEP_PIN=11, STEPPER_L_DIR_PIN=10  // moteur GAUCHE
-STEPPER_EN_PIN=21        // LOW = activé
+// Zones aveugles LIDAR (poteaux structurels)
+LIDAR_BLIND_L_START=75, LIDAR_BLIND_L_END=105   // poteau gauche (°, repère robot)
+LIDAR_BLIND_R_START=255, LIDAR_BLIND_R_END=285   // poteau droite
+
+// Moteurs — pins échangés suite à debug hardware
+STEPPER_R_STEP_PIN=12, STEPPER_R_DIR_PIN=13
+STEPPER_L_STEP_PIN=11, STEPPER_L_DIR_PIN=10
+STEPPER_EN_PIN=21  // LOW = activé
 STEPPER_L_INVERT=false, STEPPER_R_INVERT=true
-// Note : GPIO13 nécessite drive strength MAX (GPIO_DRIVE_CAP_3) — bug matériel connu,
-//        corrigé dans step_control.cpp::begin()
+// IMPORTANT : GPIO13 → GPIO_DRIVE_CAP_3 dans step_control.cpp::begin()
 
-// Géométrie
-DRIVE_WHEEL_DIAM_MM=57.7f  // diamètre roues de traction
-WHEELBASE_MM=148.5f         // voie (distance inter-roues)
-STEPS_PER_MM = 1600 / (π × 57.7) ≈ 8.82 pas/mm
-ROBOT_BACK_TO_CENTER_MM=80.9f   // arrière → axe roues (recalage bordure)
-TABLE_WIDTH_MM=3000  // axe X (horizontal)
-TABLE_HEIGHT_MM=2000 // axe Y (vertical, vers le bas)
+// Géométrie roues motrices
+DRIVE_WHEEL_DIAM_MM=57.7f
+WHEELBASE_MM=148.5f
+STEPS_PER_MM = 1600/(π×57.7) ≈ 8.82
+
+// Encodeurs (roues codeuses passives, séparées des motrices)
+ENC_WHEEL_DIAM_MM=50.0f
+ENC_WHEELBASE_MM=189.0f     // voie roues codeuses ≠ WHEELBASE_MM
+ENC_PPR=2048, ENC_COUNTS_PER_REV=8192
+MM_PER_COUNT = π×50/8192 ≈ 0.01917mm
+ENC_LEFT_INVERT=false, ENC_RIGHT_INVERT=true
+Encodeurs : PCNT_UNIT_2 (right, pins 1/2), PCNT_UNIT_3 (left, pins 6/7)
+
+// Dimensions robot
+ROBOT_BACK_TO_CENTER_MM=80.9f
+ROBOT_LENGTH_MM=161.8f, ROBOT_WIDTH_MM=232.0f
+
+// Prise/dépose de stock
+STOCK_TOOL_OFFSET_MM=210      // centre robot → centre stock en prise
+STOCK_STAGING_MM=150          // recul avant approche finale
+STOCK_DEPOSE_OFFSET_MM=180    // centre robot → centre stock en dépose
 
 // Cinématique
-DEFAULT_SPEED_MMS=200, DEFAULT_ACCEL_MMS2=150
-TURN_SPEED_MMS=160, TURN_ACCEL_MMS2=120
+DEFAULT_SPEED_MMS=400, DEFAULT_ACCEL_MMS2=200
+TURN_SPEED_MMS=200, TURN_ACCEL_MMS2=100
+
+// Table
+TABLE_WIDTH_MM=3000 (X), TABLE_HEIGHT_MM=2000 (Y, vers le bas)
+TABLE_MARGIN_MM=100
 
 // Détection obstacle
-OBS_DETECT_DIST_MM=400   // zone de détection (mm)
-OBS_WIDTH_MM=200          // largeur zone
-OBS_MIN_DIST_MM=30        // min projection avant
-LIDAR_BODY_DIST_MM=80     // filtre points intérieur robot (distance brute)
-OBS_BACKUP_MM=100         // recul après détection
-OBS_STOP_ACCEL_MMS2=2000  // décélération d'urgence
-OBS_POLL_MS=20            // période polling obstacle
-OBS_WAIT_MS=3000          // timeout dégagement adversaire
-LIDAR_LED_DIST_MM=OBS_DETECT_DIST_MM  // seuil LEDs = seuil robot
+OBS_DETECT_DIST_MM=400, OBS_WIDTH_MM=200, OBS_MIN_DIST_MM=60
+OBS_BACKUP_MM=100, OBS_STOP_ACCEL_MMS2=2000
+OBS_POLL_MS=20, OBS_WAIT_MS=3000
+LIDAR_LED_DIST_MM=OBS_DETECT_DIST_MM
 
-// Boutons
-BTN_TIRETTE_PIN=14 (INPUT, pull-up externe — HIGH=retirée)
-BTN_TEAM_PIN=17   (INPUT_PULLUP — HIGH=YELLOW, LOW=BLUE)
-BTN_INIT_PIN=3    (INPUT_PULLUP — LOW=pressé, front descendant)
+// Chrono de match
+MATCH_DURATION_MS=100000, MATCH_ENDGAME_MS=80000
 
-// NeoPixel
-NEO_PIN=46, NEO_COUNT=7
+// Actionneurs I2C
+PCA9685_I2C_ADDR=0x40, PCF8574_I2C_ADDR=0x20
 ```
 
 ---
 
-## Orientation LIDAR — IMPORTANT
+## Orientation LIDAR
 
-Le LD06 est monté **tourné 90° dans le sens horaire** sur le robot et tourne dans le **sens horaire** (inversé vs convention standard).
-
+LD06 monté **90° CW** sur le robot, scan **sens horaire**.
 Transformation angle LIDAR → repère robot :
 ```cpp
 robot_angle_deg = 270.0f - lidar_angle_deg + LIDAR_OFFSET_DEG
 ```
-Appliquée dans `robot.cpp::_obstacleSimple()`, `_obstacleWallFiltered()` et `_lidarToWorld()`.
-Également dans `leds.cpp::ledsUpdateLidar()`.
+Appliquée dans `robot.cpp` et `leds.cpp`. Zones aveugles LIDAR_BLIND_* appliquées après cette transformation dans les deux fichiers.
 
-Vérification :
-- LIDAR 270° → robot 0° = avant ✓
-- LIDAR 0°   → robot 270° = droite ✓
-- LIDAR 90°  → robot 180° = arrière ✓
-- LIDAR 180° → robot 90° = gauche ✓
+---
+
+## Repère table
+
+Origine coin haut-gauche. X+ = droite (3000mm). Y+ = bas (2000mm).
+Angle 0° = droite. Positif = CCW. 90° = haut (-Y). 270° = bas (+Y).
+Odométrie : `_x += dDist*cos(θ)`, `_y -= dDist*sin(θ)` (sin inversé pour Y-down).
+gotoXY : `atan2f(-dy, dx)`. _lidarToWorld : `wy = getY() - d*sinf(a)`.
 
 ---
 
@@ -109,30 +133,40 @@ Vérification :
 
 ```
 Core 0 : taskLidar    (prio 2) — lecture UART LD06, update buffer scan
-Core 1 : taskStrategy (prio 2) — pré-match + stratégie match
+Core 0 : taskEncoders (prio 3) — encLeft/Right.update() à 200Hz (5ms)
+                                  gère le rollover PCNT ESP32-S3
+Core 1 : taskStrategy (prio 2) — pré-match + match + chrono + actionneurs
 Core 1 : taskDisplay  (prio 1) — rendu OLED 2 Hz
-Core 1 : loop()       (prio ?) — LEDs 100ms + Teleplot Serial 500ms
+Core 1 : loop()               — ledsUpdateLidar() 100ms
+                                 Teleplot LIDAR 200ms (WAIT_INIT seulement)
+                                 Teleplot pose 500ms (match seulement)
 ```
 
-Données partagées via `DisplayData gDisplay` (display/oled.h) — champs `volatile`, écriture atomique sur ESP32.
+Données partagées : `DisplayData gDisplay` (volatile, écriture atomique ESP32).
+
+`taskEncoders` sur Core 0 à priorité 3 garantit que update() est appelé toutes les 5ms indépendamment de la charge de Core 1. Critique pour la gestion correcte du rollover PCNT.
 
 ---
 
-## Machine d'état pré-match (main.cpp::taskStrategy)
+## Machine d'état pré-match
 
 ```
+taskStrategy démarre :
+  robot.disableMotors()
+  encRight.init(pins, PCNT_UNIT_2)   // APRÈS FastAccelStepper (conflit GPIO matrix)
+  encLeft.init(pins, PCNT_UNIT_3)
+
 WAIT_INIT
-  → teamSwitch() lu en continu → ledsSetTeam()
-  → si équipe change → reset WAIT_INIT
-  → initPressed() → runInitYellow/Blue() → WAIT_TIRETTE_IN
+  → teamSwitch() continu → ledsSetTeam()
+  → initPressed() → enableMotors() → runInitYellow/Blue() → WAIT_TIRETTE_IN
+  (pendant ce temps taskEncoders tourne → OLED affiche R/L mm)
 
-WAIT_TIRETTE_IN
-  → !tirette() (LOW = insérée) → WAIT_TIRETTE_OUT
+WAIT_TIRETTE_IN → tirette LOW → WAIT_TIRETTE_OUT
+WAIT_TIRETTE_OUT → tirette HIGH → robot.startMatch() → runStrategyYellow/Blue()
 
-WAIT_TIRETTE_OUT
-  → tirette() (HIGH = retirée) → MATCH
-
-MATCH : runStrategyYellow() ou runStrategyBlue()
+Après stratégie :
+  → si endgame → runNearEndYellow/Blue()
+  → attendre isMatchOver() → disableMotors() + actuatorsDisable()
 ```
 
 ---
@@ -140,44 +174,76 @@ MATCH : runStrategyYellow() ou runStrategyBlue()
 ## API Robot (strategy/robot.h)
 
 ```cpp
-// Déplacements bloquants (avec détection obstacle si enableObstacle())
-void go(float mm);                          // + = avant, - = arrière
-void turn(float deg);                       // + = gauche (CCW), - = droite (CW)
+// Déplacements bloquants (dead reckoning)
+void go(float mm);
+void turn(float deg);
 void gotoXY(float x, float y);
 void gotoXY(float x, float y, float arrival_deg);
 
 // Pose
-void setPosition(float x_mm, float y_mm, float theta_deg);
-float getX(), getY(), getTheta(), getThetaDeg();
+void setPosition(float x, float y, float theta_deg);
 
 // Vitesse
 void setSpeed(float mmS);
 
 // Obstacle
-void enableObstacle();
-void disableObstacle();
-enum class DetectMode { SIMPLE, WALL_FILTERED };
+void enableObstacle() / disableObstacle();
+enum DetectMode { SIMPLE, WALL_FILTERED };
 void setDetectMode(DetectMode m);
-// SIMPLE (défaut) : rectangle fwd/lat, pas de filtre murs
-// WALL_FILTERED   : filtre bordures table (nécessite pose réelle)
 
 // Moteurs
-void disableMotors();   // EN=HIGH, robot poussable
-void enableMotors();    // EN=LOW
+void disableMotors() / enableMotors();
+
+// Chrono
+void startMatch();
+bool isEndgame()   const;   // >= MATCH_ENDGAME_MS
+bool isMatchOver() const;   // >= MATCH_DURATION_MS
+uint32_t matchElapsed() const;
 ```
 
-### Comportement obstacle dans go()
+### Comportement go() avec obstacle et chrono
 
 ```
-1. Poll _obstacleInDir(dir) toutes les OBS_POLL_MS ms
-2. Détection → softStop(OBS_STOP_ACCEL_MMS2)    // freinage agressif
-3. Recul → _motion.go(-sign × OBS_BACKUP_MM)    // vitesse/accel normales
-4. Attente 500ms min + _waitObstacleClear()       // max OBS_WAIT_MS
-5. Reprise avec remaining + OBS_BACKUP_MM         // boucle while
+Boucle polling (OBS_POLL_MS = 20ms) :
+  1. _motion.syncPose()    → dead reckoning depuis pas commandés
+  2. isMatchOver()         → softStop + disableMotors + vTaskDelete
+  3. isEndgame()           → softStop + break
+  4. _obstacleInDir(dir)   → softStop + recul + attente + reprise
 ```
 
-gDisplay.obs_dist_mm et gDisplay.obs_angle_deg sont mis à jour à chaque détection.
-obs_angle_deg : repère robot, 0°=avant, +90°=gauche, -90°=droite.
+---
+
+## Stratégie — fonctions disponibles (strategy.h)
+
+```cpp
+void runInitYellow(Robot &robot);
+void runInitBlue(Robot &robot);
+void runStrategyYellow(Robot &robot);
+void runStrategyBlue(Robot &robot);
+void runNearEndYellow(Robot &robot);   // repli fin de match
+void runNearEndBlue(Robot &robot);
+
+// Prise/dépose de stock (géométrie paramétrée)
+void takeStock (Robot &robot, float x, float y, float angleDeg);
+void deposeStock(Robot &robot, float x, float y, float angleDeg);
+
+// Calibration géométrique (à brancher temporairement dans main.cpp)
+void runCalibration(Robot &robot, QuadEncoder &encL, QuadEncoder &encR);
+```
+
+### takeStock / deposeStock
+
+```
+takeStock(robot, x, y, angleDeg) :
+  1. gotoXY(stageX, stageY)          // staging = pick - STAGING_MM dans approche
+  2. gotoXY(stageX, stageY, angleDeg) // orientation
+  3. go(STOCK_STAGING_MM)             // avance vers position de prise
+  4. sequencePrise()
+
+deposeStock(robot, x, y, angleDeg) :
+  1. gotoXY(depX, depY, angleDeg)    // centre robot à STOCK_DEPOSE_OFFSET_MM du stock
+  2. ouvrirGripper() → wait → go(-100) → fermerGripper()
+```
 
 ---
 
@@ -185,105 +251,123 @@ obs_angle_deg : repère robot, 0°=avant, +90°=gauche, -90°=droite.
 
 ```cpp
 bool begin();
-void go(float mm);           // bloquant
-void turn(float deg);        // bloquant
-void startGo(float mm);      // non-bloquant
-void startTurn(float deg);   // non-bloquant
-bool isMoving();
-void stop();                  // forceStop (hard)
-void softStop(float accelOverride=0);  // stopMove() avec décel optionnelle
-void syncPose();              // mise à jour X/Y/theta depuis pas
-void setPosition(float x, float y, float theta_deg);
-void setSpeed(float mmS);
-void setAcceleration(float mmS2);
-float getSpeed(), getAcceleration();
-void disableMotors(), enableMotors();
+void go(float mm) / turn(float deg);   // bloquants
+void startGo(mm) / startTurn(deg);     // non-bloquants
+void stop() / softStop(float accelOverride);
+void syncPose();                        // MAJ pose depuis pas commandés, WHEELBASE_MM
+void setPosition(x, y, theta_deg);
+void disableMotors() / enableMotors();
+float getSpeed() / getAcceleration();
+void setSpeed() / setAcceleration();
 ```
 
-Dead reckoning : pose calculée depuis les pas commandés (pas d'encodeurs).
-`syncPose()` appelé après chaque mouvement bloquant.
-
-Turn : `arc = WHEELBASE_MM × π × |deg| / 360`. Gauche : L recule, R avance.
+Dead reckoning pur : pose depuis pas commandés. Pas d'encodeurs dans la boucle de contrôle.
 
 ---
 
-## LD06 (lidar/ld06.h)
+## QuadEncoder (motion/encoder.h)
 
 ```cpp
-void begin();
-void update();   // à appeler en boucle (tâche Core 0)
-uint16_t getScan(LidarPoint *dst, uint16_t maxPts);  // thread-safe
-float getRPM();
-
-struct LidarPoint { float angle_deg; uint16_t distance_mm; uint8_t confidence; };
+bool init(int pinA, int pinB, pcnt_unit_t unit);
+void reset();
+void update();          // appelé par taskEncoders à 200Hz sur Core 0
+int32_t getCount();     // total cumulé (mm = count × MM_PER_COUNT)
 ```
 
-- Protocole : paquets 47 octets, CRC-8/MAXIM
-- 12 points/paquet avec interpolation angulaire
-- Buffer circulaire 500 points, publié à chaque révolution complète (~16ms à 3600 RPM)
-- TX serial passé comme -1 (GPIO libéré, vitesse contrôlée par PWM LEDC canal 0)
+**BUG CORRIGÉ** : Sur ESP32-S3, le compteur PCNT se remet à 0 quand il atteint h_lim (32767) — il ne wrappe PAS en -32768 comme l'int16_t standard. L'implémentation de `update()` détecte ce cas et calcule le bon delta :
+- Si `_lastHw > 16384 && hw < (_lastHw - 16384)` → reset depuis h_lim
+- Si `_lastHw < -16384 && hw > (_lastHw + 16384)` → reset depuis l_lim
+
+Sans ce fix, un mouvement > 628mm cause une massive soustraction dans `_totalCount`.
+
+Encodeurs utilisés pour :
+- Affichage WAIT_INIT (gDisplay.enc_right/left_cnt)
+- Calibration géométrique (runCalibration)
+- PAS pour l'odométrie de navigation (dead reckoning seulement)
 
 ---
 
-## Affichage OLED (display/oled.h)
+## utils.h
+
+```cpp
+inline void wait(uint32_t ms) { vTaskDelay(pdMS_TO_TICKS(ms)); }
+```
+
+Équivalent FreeRTOS de `delay()`. Inclus dans `actuators.h` et `strategy.cpp`.
+
+---
+
+## Actionneurs (actuators/)
+
+### Servo
+```cpp
+struct ServoConfig { uint8_t channel; uint16_t minUs, maxUs; float minDeg, maxDeg; };
+void setAngle(float deg);
+void setPercent(float pct);
+void moveTo(float deg, float degPerSec);       // bloquant
+void moveToPercent(float pct, float pctPerSec);
+void detach();
+```
+
+### actuators.h / actuators.cpp — fichiers utilisateur
+`actuatorsInit()` appelé dans setup(). `actuatorsDisable()` à la fin du match.
+
+---
+
+## Calibration géométrique (strategy/strategy.h)
+
+```cpp
+void runCalibration(Robot &robot, QuadEncoder &encL, QuadEncoder &encR);
+```
+
+**Angle** : `turn(720)` (2 tours) → mesure (arcD - arcL) / ENC_WHEELBASE_MM → calcule WHEELBASE_MM.
+Formule : `WHEELBASE_new = WHEELBASE × (720 / angle_mesuré)`.
+Attention : la formule est `720 / angle` (PAS `angle / 720`) — si angle < 720° il faut augmenter WHEELBASE.
+
+Pour activer : dans `main.cpp::taskStrategy`, remplacer `runInitYellow/Blue(robot)` par `runCalibration(robot, encLeft, encRight)`.
+
+---
+
+## DisplayData (display/oled.h)
 
 ```cpp
 struct DisplayData {
-    float pose_x_mm, pose_y_mm, pose_theta_deg;
+    float      pose_x_mm, pose_y_mm, pose_theta_deg;
     RobotState robot_state;
-    Team team;
-    float lidar_rpm;
-    uint16_t lidar_pts;
-    bool lidar_ok;
-    uint8_t cpu0_pct, cpu1_pct;
-    float obs_dist_mm, obs_angle_deg;  // obstacle le plus proche
+    Team       team;
+    float      lidar_rpm;
+    uint16_t   lidar_pts;
+    bool       lidar_ok;
+    uint8_t    cpu0_pct, cpu1_pct;
+    float      obs_dist_mm, obs_angle_deg;
+    uint32_t   match_start_ms;
+    int32_t    enc_right_cnt, enc_left_cnt;  // affichage WAIT_INIT uniquement
 };
-extern DisplayData gDisplay;  // partagé entre toutes les tâches
 ```
 
-Layouts :
-- **Pré-match** (WAIT_INIT/INIT/WAIT_TIRETTE_IN/WAIT_TIRETTE_OUT) : état + équipe grande police + LIDAR status
-- **OBSTACLE** : dist + angle + secteur (AVANT / AVANT GAUCHE / AVANT DROITE / ARRIERE)
-- **Autres** : état + X/Y/Cap + CPU
+RobotState : WAIT_INIT → INIT → WAIT_TIRETTE_IN → WAIT_TIRETTE_OUT → MOVING/TURNING/GOTO/OBSTACLE/ENDGAME → DONE
 
 ---
 
-## LEDs NeoPixel (io/leds.h)
+## Points d'attention critiques
 
-```
-      AVANT
-  [4]  [5]  [6]
-       [0]          LED 0 = équipe (ledsSetTeam)
-  [3]  [2]  [1]
-      ARRIÈRE
-```
+1. **GPIO13 drive strength** : GPIO_DRIVE_CAP_3 obligatoire (step_control.cpp::begin()). Sans ça, le moteur droit ne va que dans un sens.
 
-Secteurs (kSectors dans leds.cpp) :
-```
-LED 5 : 330°→30°  avant-centre   (passage par 0°)
-LED 4 : 30°→90°   avant-gauche
-LED 3 : 90°→150°  arrière-gauche
-LED 2 : 150°→210° arrière-centre
-LED 1 : 210°→270° arrière-droite
-LED 6 : 270°→330° avant-droite
-```
-Angles en repère robot (après transformation 270°-lidar_angle).
-Rafraîchissement : 100ms (loop() dans main.cpp).
-Rouge = obstacle dans le secteur (<OBS_DETECT_DIST_MM), vert dim = libre.
+2. **Encodeurs init après FastAccelStepper** : dans taskStrategy APRÈS le démarrage du scheduler FreeRTOS. Initialiser en setup() conflicte avec la matrice GPIO ESP32-S3.
 
----
+3. **PCNT rollover ESP32-S3** : le compteur PCNT se remet à 0 (pas wrappe) sur h_lim/l_lim. Corrigé dans encoder.cpp::update(). Sans le fix, les comptages > 628mm sont faux.
 
-## Points d'attention / bugs connus
+4. **taskEncoders sur Core 0** (prio 3) : garantit update() toutes les 5ms. Ne pas déplacer dans loop() — loop() peut être préempté par la tâche stratégie et ne pas tourner assez vite.
 
-1. **Drive strength GPIO13** : niveau HIGH insuffisant par défaut. Corrigé dans `step_control.cpp::begin()` avec `gpio_set_drive_capability(..., GPIO_DRIVE_CAP_3)` sur tous les pins moteurs.
+5. **ENC_WHEELBASE_MM ≠ WHEELBASE_MM** : 189mm vs 148.5mm. Utiliser le bon selon le contexte (calibration angle vs commande rotation).
 
-2. **Filtre murs WALL_FILTERED** : nécessite une pose correcte. Avec `setPosition(0,0,0)` les obstacles en Y=0 sont filtrés comme murs. Utiliser `DetectMode::SIMPLE` par défaut ou donner une pose réaliste.
+6. **Calibration WHEELBASE** : formule `WHEELBASE × (720/angle)`, PAS `WHEELBASE × (angle/720)`. Erreur inverse = empire la calibration.
 
-3. **Pins moteurs échangés** : suite à debug hardware, le moteur physiquement à droite utilise les pins 12/13 (définis comme STEPPER_R) et le gauche 11/10 (STEPPER_L). Les flags INVERT compensent.
+7. **Filtre murs WALL_FILTERED** : nécessite pose correcte. Utiliser DetectMode::SIMPLE (défaut).
 
-4. **Odométrie** : dead reckoning pur (pas d'encodeurs dans la boucle de contrôle). La dérive s'accumule sur de longs trajets. Les encodeurs sont câblés mais pas utilisés (stepper_ctrl.cpp/encoder.cpp disponibles).
+8. **Wire.begin()** dans setup() en premier. oled.cpp ne l'appelle plus.
 
-5. **Thread safety LEDs** : `ledsSetTeam()` (tâche strategy, core 1) et `ledsUpdateLidar()` (loop, core 1) peuvent s'interleaver. Accepté pour ce cas d'usage.
+9. **Teleplot LIDAR** : uniquement en WAIT_INIT (200ms). Désactivé pendant match.
 
 ---
 
@@ -291,10 +375,13 @@ Rouge = obstacle dans le secteur (<OBS_DETECT_DIST_MM), vert dim = libre.
 
 | Objectif | Fichier(s) |
 |---|---|
-| Calibrer le robot | `config.h` uniquement |
+| Calibrer le robot | `config.h` |
 | Écrire la stratégie | `strategy/strategy.cpp` |
+| Ajouter un servo / séquence | `actuators/actuators.h` + `actuators.cpp` |
 | Modifier la détection obstacle | `strategy/robot.cpp` |
+| Zones aveugles LIDAR | `config.h` (LIDAR_BLIND_*) |
 | Changer l'affichage OLED | `display/oled.cpp` |
 | Modifier le comportement des LEDs | `io/leds.cpp` |
 | Ajouter une commande Robot | `strategy/robot.h` + `robot.cpp` |
 | Modifier la cinématique | `motion/step_control.cpp` |
+| Calibration géométrique | `strategy/strategy.cpp` + `main.cpp` |

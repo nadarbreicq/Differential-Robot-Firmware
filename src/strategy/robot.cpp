@@ -26,6 +26,7 @@ uint32_t Robot::matchElapsed() const {
 bool Robot::isEndgame()   const { return matchElapsed() >= MATCH_ENDGAME_MS;  }
 bool Robot::isMatchOver() const { return matchElapsed() >= MATCH_DURATION_MS; }
 
+
 // ─── Déplacements ─────────────────────────────────────────────────────────────
 
 void Robot::go(float mm) {
@@ -45,39 +46,27 @@ void Robot::go(float mm) {
 
         _motion.setSpeed(savedSpeed);
         _motion.setAcceleration(savedAccel);
+
+        float sign   = (remaining >= 0) ? 1.0f : -1.0f;
+        bool  obsHit = false;
+
         _motion.startGo(remaining);
 
-        bool obsHit = false;
         while (_motion.isMoving()) {
             vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
             _motion.syncPose();
 
-            if (isMatchOver()) {
-                _motion.softStop(OBS_STOP_ACCEL_MMS2);
-                disableMotors();
-                gDisplay.robot_state = RobotState::DONE;
-                vTaskDelete(nullptr);   // fin de match : on supprime la tâche stratégie
-                return;
-            }
-
-            if (isEndgame()) {
-                _motion.softStop(OBS_STOP_ACCEL_MMS2);
-                endgameFired = true;
-                break;
-            }
-
-            if (_obstacleEn && _obstacleInDir(dir)) {
-                _motion.softStop(OBS_STOP_ACCEL_MMS2);
-                obsHit = true;
-                break;
-            }
+            if (isMatchOver()) { _motion.softStop(OBS_STOP_ACCEL_MMS2); disableMotors(); gDisplay.robot_state = RobotState::DONE; vTaskDelete(nullptr); return; }
+            if (isEndgame())   { _motion.softStop(OBS_STOP_ACCEL_MMS2); endgameFired = true; break; }
+            if (_obstacleEn && _obstacleInDir(dir)) { _motion.softStop(OBS_STOP_ACCEL_MMS2); obsHit = true; break; }
         }
 
         float dx      = _motion.getX() - x0;
         float dy      = _motion.getY() - y0;
-        float sign    = (remaining >= 0) ? 1.0f : -1.0f;
         float traveled = sign * sqrtf(dx*dx + dy*dy);
         remaining     -= traveled;
+
+        _motion.syncPose();
 
         if (!obsHit) return;
 
@@ -174,6 +163,11 @@ bool Robot::_obstacleSimple(float dir_rad) {
         float d = (float)_scanBuf[i].distance_mm;
         if (d < LIDAR_BODY_DIST_MM) continue;
 
+        // Zones aveugles (poteaux structurels)
+        float rDeg = fmodf(270.0f - _scanBuf[i].angle_deg + LIDAR_OFFSET_DEG + 360.0f, 360.0f);
+        if ((rDeg >= LIDAR_BLIND_L_START && rDeg <= LIDAR_BLIND_L_END) ||
+            (rDeg >= LIDAR_BLIND_R_START && rDeg <= LIDAR_BLIND_R_END)) continue;
+
         float lidarAngle = (270.0f - _scanBuf[i].angle_deg + LIDAR_OFFSET_DEG) * DEG2RAD;
         float px = d * cosf(lidarAngle);
         float py = d * sinf(lidarAngle);
@@ -212,6 +206,11 @@ bool Robot::_obstacleWallFiltered(float dir_rad) {
         if (_scanBuf[i].confidence < OBS_CONFIDENCE_MIN) continue;
         float d = (float)_scanBuf[i].distance_mm;
         if (d < LIDAR_BODY_DIST_MM) continue;
+
+        // Zones aveugles (poteaux structurels)
+        float rDeg = fmodf(270.0f - _scanBuf[i].angle_deg + LIDAR_OFFSET_DEG + 360.0f, 360.0f);
+        if ((rDeg >= LIDAR_BLIND_L_START && rDeg <= LIDAR_BLIND_L_END) ||
+            (rDeg >= LIDAR_BLIND_R_START && rDeg <= LIDAR_BLIND_R_END)) continue;
 
         float wx, wy;
         _lidarToWorld(_scanBuf[i].angle_deg, d, wx, wy);

@@ -3,6 +3,7 @@
 #include "pcf8574.h"
 #include "servo.h"
 #include "../config.h"
+#include "../utils.h"
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ACTIONNEURS  —  déclarer ici les servos, pompes et séquences
@@ -46,9 +47,17 @@ void actuatorsDisable();   // détache tous les servos, remet PCF au repos
 extern Servo servoBrasDroit;
 extern Servo servoBrasGauche;
 
+extern Servo servoLifter;
+extern Servo servoGripper;
+
 // ─── Séquences d'actionneurs ──────────────────────────────────────────────────
 void initActuators();
 void deployerBrasDroit();
 void retracteBrasDroit();
 void deployerBrasGauche();
 void retracteBrasGauche();
+void deployerLifter();
+void retracterLifter();
+void ouvrirGripper();
+void fermerGripper();
+void sequencePrise();

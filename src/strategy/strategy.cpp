@@ -23,6 +23,87 @@
 
 #include "strategy.h"
 #include "../actuators/actuators.h"
+#include "../utils.h"
+
+// ─── Calibration géométrique ─────────────────────────────────────────────────
+void runCalibration(Robot &robot, QuadEncoder &encL, QuadEncoder &encR) {
+    robot.enableMotors();
+    robot.disableObstacle();
+
+    Serial.println("\n=== CALIBRATION ANGLE (turn 360) ===");
+    Serial.printf("WHEELBASE_MM actuel : %.2f\n", (double)WHEELBASE_MM);
+
+    int32_t l0 = encL.getCount(), r0 = encR.getCount();
+
+    robot.turn(720);
+    wait(200);
+
+    float arcL = (float)(encL.getCount() - l0) * MM_PER_COUNT;
+    float arcR = (float)(encR.getCount() - r0) * MM_PER_COUNT;
+
+    float actualAngle  = (arcR - arcL) / ENC_WHEELBASE_MM * (180.0f / 3.14159265f);
+    float newWheelbase = WHEELBASE_MM * (720.0f / actualAngle);
+
+    Serial.printf("arcG=%.1fmm  arcD=%.1fmm  angle_reel=%.1f deg\n",
+                  (double)arcL, (double)arcR, (double)actualAngle);
+
+    Serial.println("\n=== VALEUR A COPIER DANS config.h ===");
+    Serial.printf("#define WHEELBASE_MM  %.2ff\n", (double)newWheelbase);
+    Serial.println("=====================================\n");
+}
+
+// ─── Prise de stock ───────────────────────────────────────────────────────────
+//
+//  angleDeg : direction d'approche (0°=droite, 90°=haut/-Y, 180°=gauche, 270°=bas/+Y)
+//
+//  Géométrie (repère table, Y+ vers le bas) :
+//
+//    [staging] ──STOCK_STAGING_MM──▶ [prise] ──STOCK_TOOL_OFFSET_MM──▶ [stock]
+//
+//  Le robot navigue en staging, s'oriente, puis avance en ligne droite.
+//
+void takeStock(Robot &robot, float x, float y, float angleDeg) {
+    float ar    = angleDeg * (3.14159265f / 180.0f);
+    float cos_a = cosf(ar);
+    float sin_a = sinf(ar);
+
+    // Position de prise : centre robot à STOCK_TOOL_OFFSET_MM en retrait du stock
+    float pickX = x - STOCK_TOOL_OFFSET_MM * cos_a;
+    float pickY = y + STOCK_TOOL_OFFSET_MM * sin_a;
+
+    // Position de staging : encore plus en retrait
+    float stageX = pickX - STOCK_STAGING_MM * cos_a;
+    float stageY = pickY + STOCK_STAGING_MM * sin_a;
+
+    // 1. Aller en staging (angle d'arrivée libre — navigation optimale)
+    robot.gotoXY(stageX, stageY);
+
+    // 2. S'orienter face au stock depuis le staging
+    robot.gotoXY(stageX, stageY, angleDeg);
+
+    // 3. Avancer en ligne droite vers la position de prise
+    robot.go(STOCK_STAGING_MM);
+
+    // 4. Prendre l'élément
+    sequencePrise();
+}
+
+void deposeStock(Robot &robot, float x, float y, float angleDeg) {
+    float ar    = angleDeg * (3.14159265f / 180.0f);
+    float cos_a = cosf(ar);
+    float sin_a = sinf(ar);
+
+    // Centre robot à STOCK_DEPOSE_OFFSET_MM en retrait du centre de dépose
+    float depX = x - STOCK_DEPOSE_OFFSET_MM * cos_a;
+    float depY = y + STOCK_DEPOSE_OFFSET_MM * sin_a;
+
+    robot.gotoXY(depX, depY, angleDeg);
+    ouvrirGripper();
+    wait(1000);
+    robot.go(-100);
+    wait(1000);
+    fermerGripper();
+}
 
 // ─── Calage bordure jaune ─────────────────────────────────────────────────────
 void runInitYellow(Robot &robot) {
@@ -31,7 +112,7 @@ void runInitYellow(Robot &robot) {
     initActuators();
     robot.go(-20);
     // TODO: plaquer contre les deux bordures côté jaune et enregistrer la pose réelle
-    robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 900, 0);
+    robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 1000, 0);
 }
 
 // ─── Calage bordure bleu ──────────────────────────────────────────────────────
@@ -48,14 +129,12 @@ void runInitBlue(Robot &robot) {
 void runStrategyYellow(Robot &robot) {
     robot.enableObstacle();
 
-    robot.go(1000);
-    deployerBrasDroit();              // déploie le bras à 150° à 60°/s
+    robot.go(250);
+    robot.gotoXY(500, 1500);
+    takeStock(robot, 175, 1600, 180);
 
-    robot.go(-800);
-    retracteBrasDroit();              // rétracte à 10° à 60°/s
-
-    robot.gotoXY(500, 500);
-    //servoBras.moveTo(90, 30);   // ou directement : 90° à 30°/s
+    robot.gotoXY(500, 1000,180);
+    deposeStock(robot, 50, 1200, 180);
 
     robot.disableMotors();
 }

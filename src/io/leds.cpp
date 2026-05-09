@@ -60,6 +60,11 @@ void ledsUpdateLidar(const LidarPoint *pts, uint16_t n) {
         if (dist < LIDAR_BODY_DIST_MM || dist > LIDAR_LED_DIST_MM)     continue;
 
         float angle = normalizeAngle(270.0f - p.angle_deg + LIDAR_OFFSET_DEG);
+
+        // Zones aveugles (poteaux structurels)
+        if ((angle >= LIDAR_BLIND_L_START && angle <= LIDAR_BLIND_L_END) ||
+            (angle >= LIDAR_BLIND_R_START && angle <= LIDAR_BLIND_R_END)) continue;
+
         for (uint8_t s = 0; s < 6; s++) {
             if (inSector(angle, kSectors[s].start, kSectors[s].end)) {
                 hit[s] = true;

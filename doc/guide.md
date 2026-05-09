@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Firmware pour robot différentiel de compétition (Coupe de France de Robotique) basé sur un **ESP32-S3**. Il gère la motorisation pas-à-pas, le LIDAR LD06, la détection d'adversaire, l'affichage OLED et les LEDs NeoPixel.
+Firmware pour robot différentiel de compétition (Coupe de France de Robotique) basé sur un **ESP32-S3**. Il gère la motorisation pas-à-pas, le LIDAR LD06, la détection d'adversaire, l'affichage OLED, les LEDs NeoPixel, les actionneurs I2C et les roues codeuses (affichage + calibration).
 
 ---
 
@@ -12,9 +12,12 @@ Firmware pour robot différentiel de compétition (Coupe de France de Robotique)
 |---|---|
 | Microcontrôleur | ESP32-S3-DevKitC-1 |
 | Moteurs | 2× pas-à-pas (200 pas/tr, 8 micropas) |
+| Encodeurs | 2× AMT102V sur roues codeuses ∅50mm, 2048 PPR |
 | LIDAR | LD06 |
 | Écran | OLED SSD1306 128×64 I2C |
 | LEDs | NeoPixel × 7 (pin 46) |
+| Actionneurs servo | PCA9685 I2C (0x40) — 16 canaux PWM |
+| I/O numérique | PCF8574 I2C (0x20) — 8 broches |
 | Tirette | Pin 14, pull-up externe |
 | Switch équipe | Pin 17, pull-up interne |
 | Bouton init | Pin 3, pull-up interne |
@@ -25,24 +28,34 @@ Firmware pour robot différentiel de compétition (Coupe de France de Robotique)
 
 ### 1. Configurer le matériel — `src/config.h`
 
-C'est **le seul fichier à toucher** pour adapter le firmware à ton robot.
-
 ```c
-// Diamètre réel des roues (mesurer avec un pied à coulisse)
-#define DRIVE_WHEEL_DIAM_MM   57.7f
+// Roues motrices
+#define DRIVE_WHEEL_DIAM_MM      57.7f   // diamètre réel (pied à coulisse)
+#define WHEELBASE_MM            148.5f   // distance entre roues motrices
 
-// Distance entre les deux roues motrices
-#define WHEELBASE_MM          148.5f
+// Roues codeuses (passives, séparées des motrices — pour test et calibration)
+#define ENC_WHEEL_DIAM_MM        50.0f
+#define ENC_WHEELBASE_MM        189.0f   // distance entre roues codeuses
 
-// Décalage arrière du robot → axe des roues (pour le recalage bordure)
-#define ROBOT_BACK_TO_CENTER_MM  80.9f
+// Dimensions robot
+#define ROBOT_BACK_TO_CENTER_MM  80.9f   // arrière → axe des roues
 
-// Vitesse et accélération par défaut
-#define DEFAULT_SPEED_MMS     200.0f   // mm/s
-#define DEFAULT_ACCEL_MMS2    150.0f   // mm/s²
+// Vitesse et accélération
+#define DEFAULT_SPEED_MMS       400.0f   // mm/s
+#define DEFAULT_ACCEL_MMS2      200.0f   // mm/s²
 
-// Distance de détection adversaire
-#define OBS_DETECT_DIST_MM    400.0f   // mm
+// Détection adversaire
+#define OBS_DETECT_DIST_MM      400.0f   // mm
+
+// Zones aveugles LIDAR (poteaux structurels du robot)
+#define LIDAR_BLIND_L_START      75.0f   // début zone gauche (°, repère robot)
+#define LIDAR_BLIND_L_END       105.0f
+#define LIDAR_BLIND_R_START     255.0f   // début zone droite
+#define LIDAR_BLIND_R_END       285.0f
+
+// Chrono de match
+#define MATCH_DURATION_MS      100000UL  // 100 s
+#define MATCH_ENDGAME_MS        80000UL  // repli à 80 s
 ```
 
 ### 2. Flasher et démarrer
@@ -56,48 +69,66 @@ pio device monitor
 
 ## Séquence pré-match
 
-À chaque démarrage, le robot suit cette séquence avant de lancer la stratégie :
-
 ```
-1. APPUYER INIT   → positionner le robot contre la bordure, appuyer sur le bouton INIT
+Démarrage → moteurs DÉSENGAGÉS (robot poussable librement)
+
+1. APPUYER INIT   → positionner le robot, appuyer sur INIT
                     → le robot effectue le calage et mémorise sa position
 
-2. INSERER TIRETTE → insérer la tirette (pin 14 passe LOW)
+2. INSERER TIRETTE → insérer la tirette (pin 14 LOW)
 
 3. PRET !          → le robot attend le retrait de la tirette
 
-4. [Tirette retirée] → match lancé !
+4. [Tirette retirée] → match lancé ! (chrono démarre)
 ```
 
-Le **switch d'équipe** (pin 17) peut être changé à tout moment avant l'étape 1.
-Si l'équipe change après l'init, l'init est automatiquement réinitialisée.
+Pendant WAIT_INIT, l'OLED affiche les **valeurs encodeurs** (R et L en mm) pour vérifier les roues codeuses.
+Le **switch d'équipe** peut être changé à tout moment avant l'étape 1.
+
+---
+
+## Chrono de match
+
+| Temps | Comportement |
+|---|---|
+| 0 → 80 s | Stratégie normale |
+| 80 s | `go()`/`turn()` s'arrêtent → `runNearEndYellow/Blue()` lancé |
+| 100 s | Moteurs et actionneurs désengagés |
 
 ---
 
 ## Écrire une stratégie — `src/strategy/strategy.cpp`
 
-### Fonctions disponibles
+### Commandes robot
 
 ```cpp
 // ─── Déplacements ───────────────────────────────────────────────────────────
 robot.go(500);              // avance 500 mm (négatif = recule)
 robot.turn(90);             // tourne 90° à gauche (négatif = droite)
-robot.gotoXY(1000, 500);    // va aux coordonnées absolues (1000, 500)
-robot.gotoXY(1000, 500, 0); // idem avec cap final 0° (face à X+)
+robot.gotoXY(1000, 500);    // va aux coordonnées absolues
+robot.gotoXY(1000, 500, 0); // idem avec cap final 0°
 
 // ─── Pose ───────────────────────────────────────────────────────────────────
-robot.setPosition(x, y, theta_deg);  // recalage / position initiale
+robot.setPosition(x, y, theta_deg);
 
 // ─── Vitesse ────────────────────────────────────────────────────────────────
-robot.setSpeed(400);        // change la vitesse en mm/s
+robot.setSpeed(400);
 
 // ─── Détection adversaire ───────────────────────────────────────────────────
-robot.enableObstacle();     // active la détection (par défaut : off)
-robot.disableObstacle();    // désactive
+robot.enableObstacle();
+robot.disableObstacle();
 
 // ─── Moteurs ────────────────────────────────────────────────────────────────
-robot.disableMotors();      // désactive les moteurs (robot poussable)
-robot.enableMotors();       // réactive les moteurs
+robot.disableMotors();
+robot.enableMotors();
+
+// ─── Chrono ─────────────────────────────────────────────────────────────────
+robot.isEndgame()    // true après MATCH_ENDGAME_MS
+robot.isMatchOver()  // true après MATCH_DURATION_MS
+
+// ─── Délai FreeRTOS (dans strategy.cpp ou actuators.cpp) ────────────────────
+#include "../utils.h"
+wait(500);           // attend 500ms en libérant le CPU
 ```
 
 ### Repère de coordonnées
@@ -115,37 +146,109 @@ robot.enableMotors();       // réactive les moteurs
 ```
 
 - **Origine** : coin haut-gauche de la table
-- **X+** : vers la droite (3000 mm)
-- **Y+** : vers le bas (2000 mm)
-- **Angle 0°** : face à droite (+X)
-- **Angles positifs** : sens anti-horaire — 90° = haut (-Y), 270° = bas (+Y)
-- **`turn(+90)`** : tourne à gauche (CCW) — `turn(-90)` : tourne à droite (CW)
+- **X+** = droite, **Y+** = bas, **0°** = face à droite
+- Angles positifs = anti-horaire : 90° = haut (-Y), 270° = bas (+Y)
 
-### Exemple de stratégie jaune
+### Prise et dépose de stock
 
 ```cpp
-void runStrategyYellow(Robot &robot) {
-    robot.enableObstacle();
-    robot.setPosition(200, 1000, 0);  // position après calage bordure
+// x, y = centre du stock, angleDeg = direction d'approche
+takeStock (robot, 500, 800, 90);   // approche, avance 210mm, séquencePrise()
+deposeStock(robot, 200, 600, 180); // navigue, ouvre gripper, recule, ferme
 
-    robot.go(500);          // avance 500 mm
-    robot.turn(-90);        // tourne à droite
-    robot.go(300);          // avance 300 mm
-    robot.gotoXY(800, 500); // va en (800, 500)
-}
+// Constantes géométriques (config.h) :
+// STOCK_TOOL_OFFSET_MM  = 210mm  (centre robot → centre stock en prise)
+// STOCK_STAGING_MM      = 150mm  (recul avant approche finale)
+// STOCK_DEPOSE_OFFSET_MM= 180mm  (centre robot → centre stock en dépose)
 ```
 
 ### Init — recalage bordure
 
 ```cpp
 void runInitYellow(Robot &robot) {
+    robot.enableMotors();
     robot.disableObstacle();
-    robot.go(-500);         // recule contre la bordure
-
-    // La position X = TABLE_MARGIN + ROBOT_BACK_TO_CENTER_MM
-    robot.setPosition(300, ROBOT_BACK_TO_CENTER_MM, 0);
+    initActuators();
+    robot.go(-300);
+    robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 900, 0);
 }
 ```
+
+---
+
+## Calibration géométrique
+
+Disponible via `runCalibration(robot, encLeft, encRight)` dans strategy.h.
+Pour l'activer temporairement : dans `main.cpp`, remplacer `runInitYellow/Blue(robot)` par `runCalibration(robot, encLeft, encRight)`.
+
+### Calibrer DRIVE_WHEEL_DIAM_MM (distances)
+
+Appuie sur init → robot fait `go(1000)` → mesure encodeurs → affiche la correction dans le moniteur série.
+
+### Calibrer WHEELBASE_MM (angles)
+
+Robot fait `turn(720)` (2 tours) → mesure encodeurs → calcule le WHEELBASE_MM corrigé.
+
+**Formule** : `WHEELBASE_new = WHEELBASE × (720 / angle_mesuré)`
+- angle mesuré < 720° → WHEELBASE trop petit → valeur augmente ✓
+- angle mesuré > 720° → WHEELBASE trop grand → valeur diminue ✓
+
+---
+
+## Actionneurs I2C — `src/actuators/`
+
+### Servomoteurs (PCA9685)
+
+```cpp
+// actuators.h — déclarer :
+extern Servo servoBras;
+void deployerBras();
+
+// actuators.cpp — définir :
+Servo servoBras(pca, {0, 500, 2500, 0, 180});  // {canal, minUs, maxUs, minDeg, maxDeg}
+void deployerBras() { servoBras.moveTo(150, 60); }  // 150° à 60°/s
+```
+
+Commandes servo :
+```cpp
+servoBras.setAngle(90);           // direct
+servoBras.setPercent(50);         // 0-100% de la course
+servoBras.moveTo(90, 45);         // avec vitesse (bloquant)
+servoBras.moveToPercent(100, 30);
+servoBras.detach();               // relâche le PWM
+```
+
+### PCF8574 (I/O numériques)
+
+```cpp
+pcf.setPin(0, false);    // LOW = actif
+pcf.setPin(0, true);     // HIGH = repos
+bool e = pcf.getPin(3);
+```
+
+### Délais dans les séquences
+
+```cpp
+#include "../utils.h"  // ou via actuators.h qui l'inclut déjà
+wait(1000);            // 1 seconde FreeRTOS (libère le CPU)
+```
+
+---
+
+## Zones aveugles LIDAR
+
+Le LIDAR peut détecter les poteaux structurels du robot. Filtrer avec :
+
+```c
+// config.h — angles en repère robot (0°=avant, 90°=gauche, 270°=droite)
+#define LIDAR_BLIND_L_START  75.0f
+#define LIDAR_BLIND_L_END   105.0f
+#define LIDAR_BLIND_R_START 255.0f
+#define LIDAR_BLIND_R_END   285.0f
+```
+
+Appliqué dans `robot.cpp` (détection obstacle) et `leds.cpp` (visualisation secteurs).
+Calibrer en observant les points des poteaux sur Teleplot pendant WAIT_INIT.
 
 ---
 
@@ -153,9 +256,13 @@ void runInitYellow(Robot &robot) {
 
 | État | Affichage |
 |---|---|
-| Pré-match | État + nom d'équipe en grand + statut LIDAR |
-| Match | État + X/Y/Cap + CPU |
-| OBSTACLE | Distance + angle + secteur (AVANT GAUCHE, etc.) |
+| `APPUYER INIT` | Équipe en grand + encodeurs (R/L mm) + LIDAR |
+| `INSERER TIRETTE` | Équipe en grand + LIDAR |
+| `PRET !` | Équipe en grand + LIDAR |
+| Match | État + X/Y/Cap + temps restant + CPU |
+| `OBSTACLE!` | Distance + angle + secteur |
+| `REPLI !` | Endgame en cours |
+| `MATCH FINI` | Fin de match |
 
 ---
 
@@ -169,45 +276,28 @@ void runInitYellow(Robot &robot) {
       ARRIÈRE
 ```
 
-- **LED 0** : couleur d'équipe (jaune ou bleu)
+- **LED 0** : couleur d'équipe
 - **LEDs 1–6** : secteurs LIDAR — rouge = obstacle, vert dim = libre
-- Seuil : `OBS_DETECT_DIST_MM` (400 mm par défaut)
-
----
-
-## Détection d'adversaire
-
-La détection est active uniquement pendant `go()` (pas pendant `turn()`).
-
-- **Avant** : si le robot avance
-- **Arrière** : si le robot recule
-
-Comportement sur détection :
-1. Freinage avec `OBS_STOP_ACCEL_MMS2` = 2000 mm/s²
-2. Recul de `OBS_BACKUP_MM` = 100 mm
-3. Attente que l'adversaire dégage (max `OBS_WAIT_MS` = 3 s)
-4. Reprise du mouvement restant automatiquement
-
-```cpp
-// Paramètres ajustables dans config.h
-#define OBS_DETECT_DIST_MM   400.0f   // distance de détection
-#define OBS_WIDTH_MM         200.0f   // largeur de la zone (≥ largeur robot)
-#define OBS_BACKUP_MM        100.0f   // recul après détection
-#define OBS_STOP_ACCEL_MMS2 2000.0f   // décélération d'urgence
-#define OBS_WAIT_MS          3000     // timeout adversaire (ms)
-```
+- Seuil = `OBS_DETECT_DIST_MM`, rafraîchissement 100ms
 
 ---
 
 ## Paramètres de calibration clés
 
-| Paramètre | Effet | À ajuster si... |
-|---|---|---|
-| `DRIVE_WHEEL_DIAM_MM` | Distances parcourues | Le robot fait plus/moins que la distance demandée |
-| `WHEELBASE_MM` | Angles de rotation | Le robot sur/sous-tourne |
-| `LIDAR_OFFSET_DEG` | Orientation secteurs LIDAR | Les secteurs LED sont décalés |
-| `LIDAR_BODY_DIST_MM` | Filtre intérieur robot | Faux positifs à courte distance |
-| `OBS_DETECT_DIST_MM` | Distance de détection | Trop/pas assez réactif |
+| Paramètre | Effet |
+|---|---|
+| `DRIVE_WHEEL_DIAM_MM` | Distances parcourues |
+| `WHEELBASE_MM` | Angles de rotation |
+| `ENC_WHEEL_DIAM_MM` | Distances mesurées par les roues codeuses |
+| `ENC_WHEELBASE_MM` | Angles calculés depuis les roues codeuses |
+| `LIDAR_OFFSET_DEG` | Orientation secteurs LIDAR |
+| `LIDAR_BODY_DIST_MM` | Filtre intérieur robot (80mm) |
+| `LIDAR_BLIND_L/R_*` | Zones aveugles poteaux structurels |
+| `OBS_DETECT_DIST_MM` | Distance détection adversaire |
+| `MATCH_DURATION_MS` | Durée totale match |
+| `MATCH_ENDGAME_MS` | Déclenchement repli |
+| `STOCK_TOOL_OFFSET_MM` | Offset centre robot→stock en prise |
+| `STOCK_DEPOSE_OFFSET_MM` | Offset centre robot→stock en dépose |
 
 ---
 
@@ -216,6 +306,7 @@ Comportement sur détection :
 | Tâche | Cœur | Priorité | Rôle |
 |---|---|---|---|
 | `lidar` | 0 | 2 | Lecture UART + parsing LD06 |
-| `strategy` | 1 | 2 | Pré-match + match |
+| `encoders` | 0 | 3 | update() encodeurs 200Hz — gestion rollover PCNT |
+| `strategy` | 1 | 2 | Pré-match + match + chrono + actionneurs |
 | `display` | 1 | 1 | Rafraîchissement OLED 2 Hz |
-| `loop()` | 1 | — | LEDs 100 ms + Teleplot 500 ms |
+| `loop()` | 1 | — | LEDs 100ms · Teleplot LIDAR 200ms (WAIT_INIT) · Pose 500ms (match) |

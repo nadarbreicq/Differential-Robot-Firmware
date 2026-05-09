@@ -3,7 +3,7 @@
 #include "../config.h"
 
 // Contrôle pur en pas avec dead-reckoning de la pose.
-// Pas d'encodeurs : la pose est calculée depuis les pas commandés.
+// La pose est calculée depuis les pas commandés (pas d'encodeurs dans la boucle).
 class StepControl {
 public:
     StepControl();
@@ -13,24 +13,23 @@ public:
     void go(float mm);              // relatif, positif = avant
     void turn(float deg);           // relatif, positif = gauche (CCW)
 
-    // ── Déplacements non-bloquants (pour surveillance obstacle) ───────────────
+    // ── Déplacements non-bloquants ────────────────────────────────────────────
     void startGo(float mm);
     void startTurn(float deg);
     bool isMoving() const;
     void stop();                            // arrêt immédiat (force)
-    void softStop(float accelOverride = 0); // arrêt avec décélération (override optionnel)
-    void disableMotors();                   // désactive les moteurs (EN HIGH)
-    void enableMotors();                    // réactive les moteurs (EN LOW)
+    void softStop(float accelOverride = 0); // arrêt avec décélération
+    void disableMotors();
+    void enableMotors();
 
-    // ── Mise à jour pose depuis les pas actuels ───────────────────────────────
-    // À appeler après stop() ou en cours de mouvement pour garder la pose à jour
+    // ── Mise à jour pose depuis les pas ──────────────────────────────────────
     void syncPose();
 
     // ── Pose ─────────────────────────────────────────────────────────────────
     void  setPosition(float x_mm, float y_mm, float theta_deg);
     float getX()        const { return _x; }
     float getY()        const { return _y; }
-    float getTheta()    const { return _theta; }         // radians
+    float getTheta()    const { return _theta; }
     float getThetaDeg() const { return _theta * 57.2957795f; }
 
     // ── Cinématique ───────────────────────────────────────────────────────────
@@ -47,8 +46,6 @@ private:
     float   _x = 0, _y = 0, _theta = 0;
     float   _speed = DEFAULT_SPEED_MMS;
     float   _accel = DEFAULT_ACCEL_MMS2;
-
-    // Référence en pas pour syncPose()
     int32_t _refL = 0, _refR = 0;
 
     void     _applySpeed();

@@ -67,9 +67,14 @@ static void render() {
         // ── Encodeur droit (test) + LIDAR ───────────────────────────────────
         u8g2.setFont(u8g2_font_6x10_tf);
         if (s == RobotState::WAIT_INIT) {
-            float mm = gDisplay.enc_right_cnt * MM_PER_COUNT;
-            snprintf(buf, sizeof(buf), "EncR:%ld  %.1fmm", (long)gDisplay.enc_right_cnt, (double)mm);
-            u8g2.drawStr(0, 53, buf);
+            snprintf(buf, sizeof(buf), "R:%ld (%.0fmm)",
+                     (long)gDisplay.enc_right_cnt,
+                     (double)(gDisplay.enc_right_cnt * MM_PER_COUNT));
+            u8g2.drawStr(0, 48, buf);
+            snprintf(buf, sizeof(buf), "L:%ld (%.0fmm)",
+                     (long)gDisplay.enc_left_cnt,
+                     (double)(gDisplay.enc_left_cnt * MM_PER_COUNT));
+            u8g2.drawStr(0, 57, buf);
         }
         snprintf(buf, sizeof(buf), "LIDAR: %s", gDisplay.lidar_ok ? "OK" : "--");
         u8g2.drawStr(0, 63, buf);

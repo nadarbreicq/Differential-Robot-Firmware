@@ -60,8 +60,19 @@ void QuadEncoder::update() {
     int16_t hw = 0;
     pcnt_get_counter_value(_unit, &hw);
 
-    // La soustraction int16_t gère automatiquement le rollover ±32767
-    int16_t delta = hw - _lastHw;
-    _lastHw       = hw;
-    _totalCount  += (int32_t)delta;
+    // Sur ESP32-S3, le PCNT se remet à 0 quand il atteint h_lim (32767) ou l_lim (-32768).
+    // Il ne wrappe PAS en int16_t — il faut détecter le reset et recalculer le delta.
+    int32_t delta;
+    if (_lastHw > 16384 && hw < (_lastHw - 16384)) {
+        // Reset depuis h_lim : compteur allait vers 32767, reset à 0, reparti à hw
+        delta = (int32_t)(32767 - _lastHw) + (int32_t)hw;
+    } else if (_lastHw < -16384 && hw > (_lastHw + 16384)) {
+        // Reset depuis l_lim : compteur allait vers -32768, reset à 0, reparti à hw
+        delta = (int32_t)(-32768 - _lastHw) + (int32_t)hw;
+    } else {
+        delta = (int32_t)hw - (int32_t)_lastHw;
+    }
+
+    _lastHw      = hw;
+    _totalCount += delta;
 }

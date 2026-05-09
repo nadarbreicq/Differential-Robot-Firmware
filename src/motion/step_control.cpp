@@ -62,6 +62,7 @@ void StepControl::startGo(float mm) {
     _stepR->move(steps);
 }
 
+
 void StepControl::startTurn(float deg) {
     // Arc = (wheelbase × π × |deg|) / 360 pour chaque roue
     float arc = WHEELBASE_MM * 3.14159265f * fabsf(deg) / 360.0f;
@@ -153,6 +154,7 @@ int32_t StepControl::_mmToSteps(float mm) const {
 uint32_t StepControl::_mmSToHz(float mmS) const {
     return (uint32_t)(fabsf(mmS) * STEPS_PER_MM);
 }
+
 
 void StepControl::_updatePoseFromDelta(float leftMm, float rightMm) {
     float dDist  = (rightMm + leftMm) * 0.5f;

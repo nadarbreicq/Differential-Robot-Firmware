@@ -17,9 +17,25 @@
 static LD06         lidar(Serial1, LIDAR_RX_PIN, -1, LIDAR_PWM_PIN);
 static StepControl  motion;
 static QuadEncoder  encRight;
+static QuadEncoder  encLeft;
 static Robot        robot(motion, lidar);
 
 static LidarPoint   scanBuf[LD06_SCAN_BUF_SIZE];
+
+// ─── Tâche encodeurs (Core 0, 200 Hz) ───────────────────────────────────────
+// Tâche dédiée pour gérer le rollover PCNT (±32767) indépendamment du reste.
+
+static void taskEncoders(void *) {
+    for (;;) {
+        encRight.update();
+        encLeft.update();
+        if (gDisplay.robot_state == RobotState::WAIT_INIT) {
+            gDisplay.enc_right_cnt = encRight.getCount();
+            gDisplay.enc_left_cnt  = encLeft.getCount();
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));   // 200 Hz
+    }
+}
 
 // ─── Tâche LIDAR (Core 0) ────────────────────────────────────────────────────
 
@@ -37,7 +53,11 @@ static void taskLidar(void *) {
 static void taskStrategy(void *) {
     // ── Phase pré-match ───────────────────────────────────────────────────────
     robot.disableMotors();   // moteurs libres pendant le positionnement
-    encRight.init(ENC_RIGHT_A_PIN, ENC_RIGHT_B_PIN, PCNT_UNIT_2);  // après FastAccelStepper
+    // Inverser A/B pour changer le sens de comptage
+    encRight.init(ENC_RIGHT_INVERT ? ENC_RIGHT_B_PIN : ENC_RIGHT_A_PIN,
+                  ENC_RIGHT_INVERT ? ENC_RIGHT_A_PIN : ENC_RIGHT_B_PIN, PCNT_UNIT_2);
+    encLeft.init( ENC_LEFT_INVERT  ? ENC_LEFT_B_PIN  : ENC_LEFT_A_PIN,
+                  ENC_LEFT_INVERT  ? ENC_LEFT_A_PIN  : ENC_LEFT_B_PIN,  PCNT_UNIT_3);
     gDisplay.team = teamSwitch();
     ledsSetTeam(gDisplay.team);
     gDisplay.robot_state = RobotState::WAIT_INIT;
@@ -129,6 +149,9 @@ void setup() {
     xTaskCreatePinnedToCore(taskLidar,    "lidar",    TASK_LIDAR_STACK,
                             nullptr, TASK_LIDAR_PRIO,    nullptr, TASK_LIDAR_CORE);
 
+    xTaskCreatePinnedToCore(taskEncoders, "encoders", 2048,
+                            nullptr, 3,                  nullptr, 0);   // Core 0, prio 3
+
     xTaskCreatePinnedToCore(taskStrategy, "strategy", TASK_STRATEGY_STACK,
                             nullptr, TASK_STRATEGY_PRIO, nullptr, TASK_STRATEGY_CORE);
 }
@@ -148,11 +171,6 @@ void loop() {
     gDisplay.pose_y_mm      = motion.getY();
     gDisplay.pose_theta_deg = motion.getThetaDeg();
 
-    // Encodeur droit — update 100 Hz (gère le rollover hardware)
-    encRight.update();
-    if (gDisplay.robot_state == RobotState::WAIT_INIT) {
-        gDisplay.enc_right_cnt = encRight.getCount();
-    }
 
     // LEDs LIDAR — toujours actif (100 ms)
     if (now - lastLed >= 100) {
@@ -176,8 +194,10 @@ void loop() {
                           -scanBuf[i].distance_mm * cosf(rad),
                            scanBuf[i].distance_mm * sinf(rad));
         }
-        Serial.printf(">enc_R:%ld\n", (long)encRight.getCount());
+        Serial.printf(">enc_R:%ld\n",    (long)encRight.getCount());
         Serial.printf(">enc_R_mm:%.2f\n", encRight.getCount() * MM_PER_COUNT);
+        Serial.printf(">enc_L:%ld\n",    (long)encLeft.getCount());
+        Serial.printf(">enc_L_mm:%.2f\n", encLeft.getCount() * MM_PER_COUNT);
     }
 
     // Teleplot pose robot — pendant le match (500 ms)

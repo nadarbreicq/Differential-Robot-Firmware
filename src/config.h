@@ -18,7 +18,10 @@
 #define ENC_PPR             2048
 #define ENC_COUNTS_PER_REV  (ENC_PPR * 4)
 #define ENC_WHEEL_DIAM_MM   50.0f
+#define ENC_WHEELBASE_MM    189.0f  // distance entre les deux roues codeuses
 #define MM_PER_COUNT        (3.14159265f * ENC_WHEEL_DIAM_MM / ENC_COUNTS_PER_REV)
+#define ENC_LEFT_INVERT     false   // inverser sens encodeur gauche
+#define ENC_RIGHT_INVERT    true    // inverser sens encodeur droit
 
 // ─── MOTEURS PAS À PAS (roues de traction ∅60 mm) ────────────────────────────
 #define STEPPER_R_STEP_PIN  12
@@ -30,11 +33,11 @@
 #define STEPPER_R_INVERT    true       // inverser sens logique moteur droit
 
 #define STEPPER_STEPS_REV   1600      // 200 pas × 8 micropas
-#define DRIVE_WHEEL_DIAM_MM 57.7f
+#define DRIVE_WHEEL_DIAM_MM 57.53f
 #define STEPS_PER_MM        ((float)STEPPER_STEPS_REV / (3.14159265f * DRIVE_WHEEL_DIAM_MM))
 
 // ─── GÉOMÉTRIE ROBOT ─────────────────────────────────────────────────────────
-#define WHEELBASE_MM            148.5f  // distance entre roues motrices (à mesurer)
+#define WHEELBASE_MM            145.60f  // distance entre roues motrices (à mesurer)
 
 // ─── DIMENSIONS ROBOT ────────────────────────────────────────────────────────
 #define ROBOT_LENGTH_MM         161.8f  // longueur totale (avant → arrière)
@@ -42,9 +45,14 @@
 #define ROBOT_BACK_TO_CENTER_MM  80.9f  // arrière du robot → axe des roues
 #define ROBOT_FRONT_TO_CENTER_MM (ROBOT_LENGTH_MM - ROBOT_BACK_TO_CENTER_MM)
 
+// ─── PRISE DE STOCK ──────────────────────────────────────────────────────────
+#define STOCK_TOOL_OFFSET_MM    210.0f  // distance centre robot → centre stock en position de prise
+#define STOCK_STAGING_MM        150.0f  // recul derrière la position de prise avant l'approche finale
+#define STOCK_DEPOSE_OFFSET_MM  180.0f  // distance centre robot → centre stock en position de dépose
+
 // ─── CINÉMATIQUE ─────────────────────────────────────────────────────────────
-#define DEFAULT_SPEED_MMS   800.0f    // mm/s
-#define DEFAULT_ACCEL_MMS2  400.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
+#define DEFAULT_SPEED_MMS   400.0f    // mm/s
+#define DEFAULT_ACCEL_MMS2  200.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
 #define TURN_SPEED_MMS      200.0f
 #define TURN_ACCEL_MMS2     100.0f
 
@@ -56,6 +64,14 @@
 // ─── DÉTECTION OBSTACLE ──────────────────────────────────────────────────────
 #define LIDAR_BODY_DIST_MM  80.0f     // ignore points < 80 mm (intérieur du robot)
 
+// ─── ZONES AVEUGLES LIDAR (poteaux structurels) ───────────────────────────────
+// Angles en repère robot : 0°=avant, 90°=gauche, 180°=arrière, 270°=droite
+// Calibrer en observant les angles des poteaux sur Teleplot (pid_dL/dR ou lidar)
+#define LIDAR_BLIND_L_START  75.0f    // début zone aveugle poteau gauche (°)
+#define LIDAR_BLIND_L_END   105.0f    // fin   zone aveugle poteau gauche (°)
+#define LIDAR_BLIND_R_START 255.0f    // début zone aveugle poteau droite (°)
+#define LIDAR_BLIND_R_END   285.0f    // fin   zone aveugle poteau droite (°)
+
 #define OBS_DETECT_DIST_MM  400.0f    // distance de détection devant/derrière
 #define OBS_WIDTH_MM        200.0f    // largeur zone de détection (≥ largeur robot)
 #define OBS_MIN_DIST_MM     60.0f     // distance projetée min dans la zone obstacle
@@ -65,6 +81,14 @@
 #define OBS_BACKUP_MM       100.0f    // recul après détection avant attente
 #define OBS_STOP_ACCEL_MMS2 2000.0f   // décélération d'urgence (freinage agressif)
 #define LIDAR_LED_DIST_MM   OBS_DETECT_DIST_MM  // seuil LEDs = seuil détection robot
+
+// ─── PID CORRECTION RECTILIGNE (encodeurs) ───────────────────────────────────
+// Corrige la dérive continue (sol incliné, asymétrie roues).
+// Ne peut pas récupérer d'un choc physique (limité par les pas commandés).
+// Augmenter KP si dérive persistante, baisser si oscillations.
+#define PID_STRAIGHT_KP    10.0f   // gain P : mm/s par mm d'erreur cumulée
+#define PID_STRAIGHT_KD     5.0f   // gain D : amortissement (mm/s par mm/poll)
+#define PID_STRAIGHT_MAX  200.0f   // correction max = 25% à 800 mm/s
 
 // ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────
 #define MATCH_DURATION_MS  100000UL   // durée totale du match (100 s)

@@ -13,11 +13,10 @@ public:
     // ── Déplacements ─────────────────────────────────────────────────────────
     void go(float mm);                              // relatif, positif = avant
     void turn(float deg);                           // relatif, positif = gauche
-    void gotoXY(float x_mm, float y_mm);            // absolu, angle d'arrivée libre
-    void gotoXY(float x_mm, float y_mm, float arrival_deg); // absolu + angle final
+    void gotoXY(float x_mm, float y_mm);
+    void gotoXY(float x_mm, float y_mm, float arrival_deg);
 
     // ── Pose ─────────────────────────────────────────────────────────────────
-    // Datum, recalage bordure, initialisation manuelle
     void setPosition(float x_mm, float y_mm, float theta_deg);
 
     // ── Cinématique ───────────────────────────────────────────────────────────
@@ -25,10 +24,9 @@ public:
 
     // ── Détection obstacle ───────────────────────────────────────────────────
     enum class DetectMode : uint8_t {
-        SIMPLE,        // distance brute dans un rectangle — pas de filtre murs
-        WALL_FILTERED, // filtre les points identifiés comme murs (nécessite pose réelle)
+        SIMPLE,
+        WALL_FILTERED,
     };
-
     void enableObstacle()             { _obstacleEn = true;  }
     void disableObstacle()            { _obstacleEn = false; }
     bool obstacleEnabled() const      { return _obstacleEn; }
@@ -53,21 +51,19 @@ public:
 private:
     StepControl &_motion;
     LD06        &_lidar;
-    bool         _obstacleEn  = true;
-    DetectMode   _detectMode  = DetectMode::SIMPLE;
+    bool         _obstacleEn = true;
+    DetectMode   _detectMode = DetectMode::SIMPLE;
 
     LidarPoint   _scanBuf[LD06_SCAN_BUF_SIZE];
 
     bool _obstacleInDir(float dir_rad);
-    bool _obstacleSimple(float dir_rad);       // sans filtre murs
-    bool _obstacleWallFiltered(float dir_rad); // avec filtre murs (pose réelle requise)
+    bool _obstacleSimple(float dir_rad);
+    bool _obstacleWallFiltered(float dir_rad);
 
     void _lidarToWorld(float angle_deg, float dist_mm,
                        float &wx, float &wy) const;
 
-    // Bloque jusqu'à ce que l'obstacle disparaisse (ou timeout OBS_WAIT_MS)
     void _waitObstacleClear(float dir_rad);
 
-    // Normalise un angle entre -π et π
     static float _normAngle(float rad);
 };
