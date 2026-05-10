@@ -17,8 +17,8 @@ public:
     void gotoXY(float x_mm, float y_mm);            // dead reckoning (pas commandés)
     void gotoXY(float x_mm, float y_mm, float arrival_deg);
 
-    // Navigation odométrie encodeurs — Principe 1 RCVA
-    void turnEnc(float deg);                               // rotation PID par roue
+    // Navigation odométrie encodeurs — double PID position
+    void turnPID(float deg);                               // rotation asservie encodeurs
     void gotoXYenc(float x_mm, float y_mm);
     void gotoXYenc(float x_mm, float y_mm, float arrival_deg);
     void setEncoders(QuadEncoder *l, QuadEncoder *r) { _encLeft = l; _encRight = r; }
@@ -64,6 +64,8 @@ private:
     LidarPoint    _scanBuf[LD06_SCAN_BUF_SIZE];
     QuadEncoder  *_encLeft  = nullptr;
     QuadEncoder  *_encRight = nullptr;
+
+    void _runWheelPID(int32_t tL, int32_t tR, float speed, float accel);
 
     bool _obstacleInDir(float dir_rad);
     bool _obstacleSimple(float dir_rad);

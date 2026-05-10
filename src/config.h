@@ -17,7 +17,7 @@
 
 #define ENC_PPR             2048
 #define ENC_COUNTS_PER_REV  (ENC_PPR * 4)
-#define ENC_WHEEL_DIAM_MM   50.0f
+#define ENC_WHEEL_DIAM_MM   50.58f
 #define ENC_WHEELBASE_MM    189.0f  // distance entre les deux roues codeuses
 #define MM_PER_COUNT        (3.14159265f * ENC_WHEEL_DIAM_MM / ENC_COUNTS_PER_REV)
 #define ENC_LEFT_INVERT     false   // inverser sens encodeur gauche
@@ -51,10 +51,10 @@
 #define STOCK_DEPOSE_OFFSET_MM  180.0f  // distance centre robot → centre stock en position de dépose
 
 // ─── CINÉMATIQUE ─────────────────────────────────────────────────────────────
-#define DEFAULT_SPEED_MMS   400.0f    // mm/s
-#define DEFAULT_ACCEL_MMS2  200.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
-#define TURN_SPEED_MMS      200.0f
-#define TURN_ACCEL_MMS2     100.0f
+#define DEFAULT_SPEED_MMS   800.0f    // mm/s
+#define DEFAULT_ACCEL_MMS2  600.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
+#define TURN_SPEED_MMS      500.0f
+#define TURN_ACCEL_MMS2     400.0f
 
 // ─── TABLE DE JEU ────────────────────────────────────────────────────────────
 #define TABLE_WIDTH_MM      3000.0f   // axe X (horizontal)
@@ -90,36 +90,30 @@
 #define PID_STRAIGHT_KD     5.0f   // gain D : amortissement (mm/s par mm/poll)
 #define PID_STRAIGHT_MAX  200.0f   // correction max = 25% à 800 mm/s
 
-// ─── NAVIGATION ODOMÉTRIE ENCODEURS (Principe 1 RCVA — PID par roue) ────────
+// ─── ASSERVISSEMENT EN POSITION — double PID indépendant (roue D / roue G) ────
+//
+//  Chaque roue a son propre PID : consigne_position → erreur → PID → vitesse moteur.
+//  Les deux boucles sont indépendantes : elles se synchronisent naturellement
+//  (la roue en retard reçoit une consigne de vitesse plus élevée).
 //
 //  RÉGLAGE — procédure recommandée :
-//
-//  1. Mettre KI=0, KD=0. Augmenter KP jusqu'à convergence rapide.
-//     → Si oscillations autour de la cible : KP trop élevé, réduire de 20%.
-//     → Si approche trop lente            : augmenter KP.
-//
-//  2. Ajouter KD pour amortir les oscillations résiduelles.
-//     → Commencer à 0.01, monter par pas de 0.01.
-//     → Si le mouvement devient saccadé   : KD trop élevé.
-//
-//  3. Ajouter KI si le robot s'arrête systématiquement avant la cible (friction).
-//     → Commencer à 0.1, monter prudemment.
-//     → Surveiller I_MAX pour éviter le windup (intégrale qui explose).
+//    1. KI=0, KD=0. Augmenter KP jusqu'à décelération nette sans dépassement.
+//       Valeur de départ : KP = savedAccel / savedSpeed (≈ 0.5 avec les défauts).
+//    2. Si le robot s'arrête systématiquement avant la cible (friction statique) :
+//       augmenter KI prudemment. Surveiller I_MAX.
+//    3. Si oscillations en fin de course : augmenter KD.
 //
 //  Symptômes → actions :
-//    Oscillations           → baisser KP  ou monter KD
-//    Undershoot permanent   → monter KI
-//    Overshoot              → baisser KP  ou monter KD
-//    Mouvement saccadé      → baisser KD
-//    N'atteint pas le seuil → agrandir STOP_MM
+//    Dépassement          → baisser KP
+//    Undershoot / calage  → augmenter KI ou MIN_SPD
+//    Oscillations finales → augmenter KD
 //
-#define ENC_P1_KP         2.0f    // proportionnel  : mm/s par mm d'erreur
-#define ENC_P1_KI         0.3f    // intégral       : mm/s par mm·s (0 pour désactiver)
-#define ENC_P1_KD         0.05f   // dérivé         : amortissement (0 pour désactiver)
-#define ENC_P1_I_MAX    100.0f    // anti-windup    : saturation de l'intégrale (mm/s)
-#define ENC_P1_STOP_MM    3.0f    // seuil d'arrêt  : plus petit = plus précis (mm)
-#define ENC_P1_MIN_SPD    8.0f    // vitesse min    : trop bas = risque de caler (mm/s)
-#define ENC_P1_CORR_MM   20.0f    // correction fin : step-based si erreur > valeur (mm)
+#define ENC_P1_KP         2.0f    // proportionnel : mm/s par mm d'erreur position
+#define ENC_P1_KI         0.01f    // intégral      : mm/s par (mm · s) — anti-trainage
+#define ENC_P1_KD         0.1f   // dérivé        : amortissement en fin de course
+#define ENC_P1_I_MAX     50.0f    // anti-windup   : saturation intégrale (mm/s)
+#define ENC_P1_STOP_MM    3.0f    // seuil d'arrêt : avg erreur < valeur → stop (mm)
+#define ENC_P1_MIN_SPD    8.0f    // vitesse min   : en dessous → stopMove() (mm/s)
 
 // ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────
 #define MATCH_DURATION_MS  100000UL   // durée totale du match (100 s)

@@ -17,7 +17,8 @@ public:
     void startGo(float mm);
     void startRunOpen(float mm);            // vitesse continue, arrêt géré par l'appelant
     void startTurnOpen(float deg);          // rotation continue (roues opposées), arrêt géré par l'appelant
-    void setMotorSpeeds(float leftMmS, float rightMmS);  // vitesses individuelles
+    void setMotorSpeeds(float leftMmS, float rightMmS);      // magnitude seule (direction inchangée)
+    void setMotorVelocities(float leftMmS, float rightMmS);  // vitesse signée, gère la direction
     void startTurn(float deg);
     bool isMoving() const;
     void stop();                            // arrêt immédiat (force)

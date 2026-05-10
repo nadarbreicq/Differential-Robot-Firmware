@@ -13,7 +13,7 @@ PCF8574 pcf(PCF8574_I2C_ADDR);
 // ─── Servomoteurs ─────────────────────────────────────────────────────────────
 // {canal, minUs, maxUs, minDeg, maxDeg}
 Servo servoBrasDroit(pca, {0, 2500, 500, 0, 180});   // canal 0, course 0°-180°
-Servo servoBrasGauche(pca, {1, 500, 2500, 0, 180});   // canal 0, course 0°-180°
+Servo servoBrasGauche(pca, {1, 500, 2500, 0, 180});   // canal 1, course 0°-180°
 Servo servoLifter(pca, {2, 2000, 1000, 0, 180});     // canal 2, course 0°-180°
 Servo servoGripper(pca, {3, 2500, 500, 0, 180});    // canal 3, course 0°-180° 
 
@@ -27,8 +27,10 @@ bool actuatorsInit() {
 }
 
 void actuatorsDisable() {
-    servoBrasDroit.detach();        // coupe le signal PWM → servo libre
+    servoBrasDroit.detach();
     servoBrasGauche.detach();
+    servoLifter.detach();
+    servoGripper.detach();
     pcf.writeByte(0xFF);       // toutes sorties PCF8574 au repos (HIGH)
 }
 
@@ -46,7 +48,7 @@ void deployerBrasDroit() {
 }
 
 void retracteBrasDroit() {
-    servoBrasGauche.moveToPercent(48, 60);
+    servoBrasDroit.moveToPercent(48, 60);
 }
 
 void deployerBrasGauche() {

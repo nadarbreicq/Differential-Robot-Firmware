@@ -86,6 +86,17 @@ void StepControl::setMotorSpeeds(float leftMmS, float rightMmS) {
     _stepR->setSpeedInHz(_mmSToHz(rightMmS));
 }
 
+void StepControl::setMotorVelocities(float leftMmS, float rightMmS) {
+    auto apply = [](FastAccelStepper *s, float mmS) {
+        if (fabsf(mmS) < 0.5f) { s->stopMove(); return; }
+        s->setSpeedInHz((uint32_t)(fabsf(mmS) * STEPS_PER_MM));
+        if (mmS > 0) s->runForward();
+        else         s->runBackward();
+    };
+    apply(_stepL, leftMmS);
+    apply(_stepR, rightMmS);
+}
+
 
 void StepControl::startTurn(float deg) {
     // Arc = (wheelbase × π × |deg|) / 360 pour chaque roue

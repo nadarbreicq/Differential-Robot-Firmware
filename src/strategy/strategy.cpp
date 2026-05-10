@@ -113,6 +113,7 @@ void runInitYellow(Robot &robot) {
     robot.go(-20);
     // TODO: plaquer contre les deux bordures côté jaune et enregistrer la pose réelle
     robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 1000, 0);
+    //robot.gotoXYenc(1000, 1000, 90);  // Test ligne droite
 }
 
 // ─── Calage bordure bleu ──────────────────────────────────────────────────────
