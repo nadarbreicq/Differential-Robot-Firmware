@@ -62,6 +62,30 @@ void StepControl::startGo(float mm) {
     _stepR->move(steps);
 }
 
+void StepControl::startTurnOpen(float deg) {
+    _stepL->setSpeedInHz(_mmSToHz(TURN_SPEED_MMS));
+    _stepR->setSpeedInHz(_mmSToHz(TURN_SPEED_MMS));
+    _stepL->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * STEPS_PER_MM));
+    _stepR->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * STEPS_PER_MM));
+    _refL = _stepL->getCurrentPosition();
+    _refR = _stepR->getCurrentPosition();
+    if (deg >= 0) { _stepL->runBackward(); _stepR->runForward();  }  // CCW
+    else           { _stepL->runForward();  _stepR->runBackward(); }  // CW
+}
+
+void StepControl::startRunOpen(float mm) {
+    _applySpeed();
+    _refL = _stepL->getCurrentPosition();
+    _refR = _stepR->getCurrentPosition();
+    if (mm >= 0) { _stepL->runForward(); _stepR->runForward(); }
+    else          { _stepL->runBackward(); _stepR->runBackward(); }
+}
+
+void StepControl::setMotorSpeeds(float leftMmS, float rightMmS) {
+    _stepL->setSpeedInHz(_mmSToHz(leftMmS));
+    _stepR->setSpeedInHz(_mmSToHz(rightMmS));
+}
+
 
 void StepControl::startTurn(float deg) {
     // Arc = (wheelbase × π × |deg|) / 360 pour chaque roue

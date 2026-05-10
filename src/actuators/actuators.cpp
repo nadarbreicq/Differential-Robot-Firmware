@@ -75,11 +75,11 @@ void fermerGripper() {
 
 void sequencePrise() {
     ouvrirGripper();
-    wait(1000);
+    wait(250);
     deployerLifter();
-    wait(1000);
+    wait(250);
     fermerGripper();
-    wait(1000);
+    wait(250);
     retracterLifter();
-    wait(1000);
+    wait(250);
 }

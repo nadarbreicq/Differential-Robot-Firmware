@@ -76,10 +76,10 @@ void takeStock(Robot &robot, float x, float y, float angleDeg) {
     float stageY = pickY + STOCK_STAGING_MM * sin_a;
 
     // 1. Aller en staging (angle d'arrivée libre — navigation optimale)
-    robot.gotoXY(stageX, stageY);
+    robot.gotoXYenc(stageX, stageY);
 
     // 2. S'orienter face au stock depuis le staging
-    robot.gotoXY(stageX, stageY, angleDeg);
+    robot.gotoXYenc(stageX, stageY, angleDeg);
 
     // 3. Avancer en ligne droite vers la position de prise
     robot.go(STOCK_STAGING_MM);
@@ -97,11 +97,11 @@ void deposeStock(Robot &robot, float x, float y, float angleDeg) {
     float depX = x - STOCK_DEPOSE_OFFSET_MM * cos_a;
     float depY = y + STOCK_DEPOSE_OFFSET_MM * sin_a;
 
-    robot.gotoXY(depX, depY, angleDeg);
+    robot.gotoXYenc(depX, depY, angleDeg);
     ouvrirGripper();
-    wait(1000);
+    wait(250);
     robot.go(-100);
-    wait(1000);
+    wait(250);
     fermerGripper();
 }
 
@@ -130,10 +130,10 @@ void runStrategyYellow(Robot &robot) {
     robot.enableObstacle();
 
     robot.go(250);
-    robot.gotoXY(500, 1500);
+    robot.gotoXYenc(500, 1500);
     takeStock(robot, 175, 1600, 180);
 
-    robot.gotoXY(500, 1000,180);
+    robot.gotoXYenc(500, 1000, 180);
     deposeStock(robot, 50, 1200, 180);
 
     robot.disableMotors();
@@ -154,14 +154,17 @@ void runStrategyBlue(Robot &robot) {
 
 // ─── Repli fin de match jaune ─────────────────────────────────────────────────
 void runNearEndYellow(Robot &robot) {
-    robot.disableObstacle();
+    robot.enableMotors();
+    robot.enableObstacle();
     // TODO: position de sécurité côté jaune
+    robot.gotoXY(250,250,270);
     robot.disableMotors();
 }
 
 // ─── Repli fin de match bleu ──────────────────────────────────────────────────
 void runNearEndBlue(Robot &robot) {
-    robot.disableObstacle();
+    robot.enableMotors();
+    robot.enableObstacle();
     // TODO: position de sécurité côté bleu
     robot.disableMotors();
 }

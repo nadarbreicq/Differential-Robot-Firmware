@@ -52,8 +52,23 @@ struct DisplayData {
     volatile float      obs_dist_mm;
     volatile float      obs_angle_deg;  // repère robot : 0°=avant, +90°=gauche
     volatile uint32_t   match_start_ms; // millis() au départ — 0 = pas démarré
-    volatile int32_t    enc_right_cnt;  // test encodeur droit (counts bruts)
-    volatile int32_t    enc_left_cnt;   // test encodeur gauche (counts bruts)
+    volatile int32_t    enc_right_cnt;      // compte brut encodeur droit
+    volatile int32_t    enc_left_cnt;       // compte brut encodeur gauche
+
+    // Odométrie encodeurs (calculée en continu dans taskEncoders)
+    volatile float      enc_pose_x_mm;
+    volatile float      enc_pose_y_mm;
+    volatile float      enc_pose_theta_deg;
+    volatile float      enc_pose_theta_rad;   // utilisé par gotoXYenc
+
+    volatile float      nav_delta_deg;      // dernier delta angle gotoXY (debug)
+    volatile float      nav_dist_mm;        // distance restante gotoXY (debug)
+
+    // Requête de reset odométrie (écrit par setPosition, lu par taskEncoders)
+    volatile bool       enc_reset_pending;
+    volatile float      enc_reset_x;
+    volatile float      enc_reset_y;
+    volatile float      enc_reset_theta_deg;
 };
 
 extern DisplayData gDisplay;

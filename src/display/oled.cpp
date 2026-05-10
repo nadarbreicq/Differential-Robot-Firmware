@@ -113,16 +113,26 @@ static void render() {
         u8g2.drawStr(120, 13, gDisplay.team == Team::YELLOW ? "J" : "B");
         u8g2.setDrawColor(1);
 
-        // ── Position X / Y ───────────────────────────────────────────────────
+        // ── Positions estimée (pas) et encodeurs ─────────────────────────────
         u8g2.setFont(u8g2_font_6x10_tf);
-        snprintf(buf, sizeof(buf), "X:%7.1f mm", (double)gDisplay.pose_x_mm);
+        snprintf(buf, sizeof(buf), "Est%5.0f %5.0f %+5.1f",
+                 (double)gDisplay.pose_x_mm,
+                 (double)gDisplay.pose_y_mm,
+                 (double)gDisplay.pose_theta_deg);
         u8g2.drawStr(0, 27, buf);
-        snprintf(buf, sizeof(buf), "Y:%7.1f mm", (double)gDisplay.pose_y_mm);
+
+        snprintf(buf, sizeof(buf), "Enc%5.0f %5.0f %+5.1f",
+                 (double)gDisplay.enc_pose_x_mm,
+                 (double)gDisplay.enc_pose_y_mm,
+                 (double)gDisplay.enc_pose_theta_deg);
         u8g2.drawStr(0, 38, buf);
 
-        snprintf(buf, sizeof(buf), "Cap: %6.1f deg", (double)gDisplay.pose_theta_deg);
-        u8g2.drawStr(0, 49, buf);
-
+        if (gDisplay.nav_dist_mm > 0.5f) {
+            snprintf(buf, sizeof(buf), "d:%+6.1f  D:%5.0fmm",
+                     (double)gDisplay.nav_delta_deg,
+                     (double)gDisplay.nav_dist_mm);
+            u8g2.drawStr(0, 50, buf);
+        }
         uint32_t elapsed = (gDisplay.match_start_ms > 0)
                          ? (millis() - gDisplay.match_start_ms) / 1000 : 0;
         uint32_t remain  = (elapsed < 100) ? (100 - elapsed) : 0;

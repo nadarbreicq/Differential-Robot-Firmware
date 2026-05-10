@@ -15,6 +15,9 @@ public:
 
     // ── Déplacements non-bloquants ────────────────────────────────────────────
     void startGo(float mm);
+    void startRunOpen(float mm);            // vitesse continue, arrêt géré par l'appelant
+    void startTurnOpen(float deg);          // rotation continue (roues opposées), arrêt géré par l'appelant
+    void setMotorSpeeds(float leftMmS, float rightMmS);  // vitesses individuelles
     void startTurn(float deg);
     bool isMoving() const;
     void stop();                            // arrêt immédiat (force)

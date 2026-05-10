@@ -56,7 +56,7 @@ void Robot::go(float mm) {
             vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
             _motion.syncPose();
 
-            if (isMatchOver()) { _motion.softStop(OBS_STOP_ACCEL_MMS2); disableMotors(); gDisplay.robot_state = RobotState::DONE; vTaskDelete(nullptr); return; }
+            if (isMatchOver()) { _motion.softStop(OBS_STOP_ACCEL_MMS2); disableMotors(); gDisplay.robot_state = RobotState::DONE; return; }
             if (isEndgame())   { _motion.softStop(OBS_STOP_ACCEL_MMS2); endgameFired = true; break; }
             if (_obstacleEn && _obstacleInDir(dir)) { _motion.softStop(OBS_STOP_ACCEL_MMS2); obsHit = true; break; }
         }
@@ -86,6 +86,156 @@ void Robot::go(float mm) {
     _motion.setAcceleration(savedAccel);
 }
 
+// ─── Rotation avec vérification encodeurs ────────────────────────────────────
+// Turn step-based (précis, profil trapézoïdal calibré) + correction encodeur.
+
+void Robot::turnEnc(float deg) {
+    if (fabsf(deg) < 0.5f) return;
+    if (isEndgame() || isMatchOver()) return;
+
+    gDisplay.robot_state = RobotState::TURNING;
+
+    // Mesure avant
+    int32_t l0 = _encLeft  ? _encLeft->getCount()  : 0;
+    int32_t r0 = _encRight ? _encRight->getCount() : 0;
+
+    // Turn step-based (précision du profil trapézoïdal FastAccelStepper)
+    _motion.turn(deg);
+
+    // Vérification et correction encodeur
+    if (_encLeft && _encRight) {
+        float arcL   = (float)(_encLeft->getCount()  - l0) * MM_PER_COUNT;
+        float arcR   = (float)(_encRight->getCount() - r0) * MM_PER_COUNT;
+        float actual = (arcR - arcL) / ENC_WHEELBASE_MM * (180.0f / 3.14159265f);
+        float error  = deg - actual;   // erreur angulaire résiduelle
+
+        gDisplay.nav_delta_deg = error;
+
+        // Correction step-based si écart significatif (entre 2° et 30°)
+        if (fabsf(error) > 2.0f && fabsf(error) < 30.0f)
+            _motion.turn(error);
+    }
+
+    gDisplay.robot_state = RobotState::IDLE;
+}
+
+// ─── Navigation odométrie encodeurs — Principe 1 RCVA ────────────────────────
+// Chaque roue suit indépendamment sa consigne de position (encodeur).
+// Vitesse proportionnelle à l'erreur restante. Arrêt quand les deux roues
+// sont dans le seuil ENC_P1_STOP_MM.
+
+void Robot::gotoXYenc(float tx, float ty) {
+    gotoXYenc(tx, ty, NAN);
+}
+
+void Robot::gotoXYenc(float tx, float ty, float arrival_deg) {
+    gDisplay.robot_state = RobotState::GOTO;
+
+    float savedSpeed = _motion.getSpeed();
+    float savedAccel = _motion.getAcceleration();
+
+    // ── 1. Alignement vers la cible (step-based) ────────────────────────────
+    {
+        float dx = tx - gDisplay.enc_pose_x_mm;
+        float dy = ty - gDisplay.enc_pose_y_mm;
+        if (sqrtf(dx*dx + dy*dy) > ENC_P1_STOP_MM) {
+            float target_a = atan2f(-dy, dx);
+            float aerr     = _normAngle(target_a - gDisplay.enc_pose_theta_rad);
+            if (fabsf(aerr) > 0.26f)   // > ~15°
+                turnEnc(aerr * RAD2DEG);
+        }
+    }
+
+    // ── 2. Avance vers la cible — PID par roue (Principe 1) ────────────────
+    {
+        float dx   = tx - gDisplay.enc_pose_x_mm;
+        float dy   = ty - gDisplay.enc_pose_y_mm;
+        float dist = sqrtf(dx*dx + dy*dy);
+
+        if (dist > ENC_P1_STOP_MM) {
+            int32_t tL = _encLeft->getCount()  + (int32_t)(dist / MM_PER_COUNT);
+            int32_t tR = _encRight->getCount() + (int32_t)(dist / MM_PER_COUNT);
+
+            _motion.setSpeed(savedSpeed);
+            _motion.setAcceleration(savedAccel);
+            _motion.startRunOpen(1.0f);
+
+            float iL = 0, iR = 0;          // intégrales
+            float prevEL = dist, prevER = dist;
+            const float dt = OBS_POLL_MS / 1000.0f;
+            float brakingDist = fminf((savedSpeed * savedSpeed) / (2.0f * savedAccel),
+                                     dist * 0.5f);
+
+            while (true) {
+                vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
+
+                float eL = (float)(tL - _encLeft->getCount())  * MM_PER_COUNT;
+                float eR = (float)(tR - _encRight->getCount()) * MM_PER_COUNT;
+                float avg = (fabsf(eL) + fabsf(eR)) * 0.5f;
+
+                gDisplay.nav_dist_mm   = avg;
+                gDisplay.nav_delta_deg = eL - eR;
+
+                // ── Freinage naturel avant la cible ──────────────────────────
+                if (avg <= brakingDist) {
+                    _motion.setMotorSpeeds(savedSpeed, savedSpeed);
+                    _motion.softStop(savedAccel);
+                    while (_motion.isMoving()) vTaskDelay(pdMS_TO_TICKS(5));
+                    break;
+                }
+
+                // ── PID par roue ─────────────────────────────────────────────
+                // Intégrale (anti-windup)
+                iL += ENC_P1_KI * eL * dt;
+                iR += ENC_P1_KI * eR * dt;
+                iL = fmaxf(-ENC_P1_I_MAX, fminf(iL, ENC_P1_I_MAX));
+                iR = fmaxf(-ENC_P1_I_MAX, fminf(iR, ENC_P1_I_MAX));
+                // Dérivée
+                float dL = ENC_P1_KD * (eL - prevEL) / dt;
+                float dR = ENC_P1_KD * (eR - prevER) / dt;
+                prevEL = eL;  prevER = eR;
+
+                float outL = ENC_P1_KP * eL + iL + dL;
+                float outR = ENC_P1_KP * eR + iR + dR;
+
+                float sL = fminf(fabsf(outL), savedSpeed);
+                float sR = fminf(fabsf(outR), savedSpeed);
+                sL = fmaxf(sL, ENC_P1_MIN_SPD);
+                sR = fmaxf(sR, ENC_P1_MIN_SPD);
+                _motion.setMotorSpeeds(sL, sR);
+
+                if (isMatchOver()) { _motion.softStop(OBS_STOP_ACCEL_MMS2); disableMotors(); gDisplay.robot_state = RobotState::DONE; return; }
+                if (isEndgame())   { _motion.softStop(OBS_STOP_ACCEL_MMS2); break; }
+                if (_obstacleEn && _obstacleInDir(_motion.getTheta())) { _motion.softStop(OBS_STOP_ACCEL_MMS2); break; }
+            }
+
+            // ── Correction finale si erreur résiduelle > seuil ───────────────
+            float finalEL = (float)(tL - _encLeft->getCount())  * MM_PER_COUNT;
+            float finalER = (float)(tR - _encRight->getCount()) * MM_PER_COUNT;
+            float corrL = finalEL, corrR = finalER;
+            if (fabsf(corrL) > ENC_P1_CORR_MM || fabsf(corrR) > ENC_P1_CORR_MM) {
+                float corr = (corrL + corrR) * 0.5f;
+                _motion.go(corr);   // correction step-based résiduelle
+            }
+        }
+    }
+
+    _motion.setSpeed(savedSpeed);
+    _motion.setAcceleration(savedAccel);
+    _motion.setMotorSpeeds(savedSpeed, savedSpeed);
+    gDisplay.nav_dist_mm = 0;
+
+    // ── 3. Orientation finale (optionnelle, step-based) ─────────────────────
+    if (!isnanf(arrival_deg)) {
+        float target_rad = arrival_deg * DEG2RAD;
+        float delta = _normAngle(target_rad - gDisplay.enc_pose_theta_rad);
+        if (fabsf(delta) > 0.26f)
+            turnEnc(delta * RAD2DEG);
+    }
+
+    gDisplay.robot_state = RobotState::IDLE;
+}
+
 void Robot::turn(float deg) {
     if (fabsf(deg) < 0.5f) return;
     if (isEndgame() || isMatchOver()) return;
@@ -103,12 +253,16 @@ void Robot::gotoXY(float tx, float ty, float arrival_deg) {
     float dx = tx - _motion.getX();
     float dy = ty - _motion.getY();
     float dist = sqrtf(dx * dx + dy * dy);
+
+    float target_angle = atan2f(-dy, dx);
+    float delta        = _normAngle(target_angle - _motion.getTheta());
+    gDisplay.nav_delta_deg = delta * RAD2DEG;
+    gDisplay.nav_dist_mm   = dist;
+
     if (dist < 1.0f) goto arrival;
 
     {
         // 1. Tourne vers la cible
-        float target_angle = atan2f(-dy, dx);   // Y+ vers le bas → dy inversé
-        float delta = _normAngle(target_angle - _motion.getTheta());
         turn(delta * RAD2DEG);
 
         // 2. Avance jusqu'à la cible
@@ -123,12 +277,18 @@ arrival:
         if (fabsf(delta) > 0.01f)
             turn(delta * RAD2DEG);
     }
+    gDisplay.nav_dist_mm = 0;   // efface l'affichage nav
 }
 
 // ─── Pose ─────────────────────────────────────────────────────────────────────
 
 void Robot::setPosition(float x_mm, float y_mm, float theta_deg) {
     _motion.setPosition(x_mm, y_mm, theta_deg);
+    // Synchronise l'odométrie encodeurs sur la même position
+    gDisplay.enc_reset_x         = x_mm;
+    gDisplay.enc_reset_y         = y_mm;
+    gDisplay.enc_reset_theta_deg = theta_deg;
+    gDisplay.enc_reset_pending   = true;   // taskEncoders appliquera au prochain tick
     ESP_LOGI(TAG, "Position: x=%.0f y=%.0f θ=%.1f°", x_mm, y_mm, theta_deg);
 }
 

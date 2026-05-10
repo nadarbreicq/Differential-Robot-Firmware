@@ -90,6 +90,37 @@
 #define PID_STRAIGHT_KD     5.0f   // gain D : amortissement (mm/s par mm/poll)
 #define PID_STRAIGHT_MAX  200.0f   // correction max = 25% à 800 mm/s
 
+// ─── NAVIGATION ODOMÉTRIE ENCODEURS (Principe 1 RCVA — PID par roue) ────────
+//
+//  RÉGLAGE — procédure recommandée :
+//
+//  1. Mettre KI=0, KD=0. Augmenter KP jusqu'à convergence rapide.
+//     → Si oscillations autour de la cible : KP trop élevé, réduire de 20%.
+//     → Si approche trop lente            : augmenter KP.
+//
+//  2. Ajouter KD pour amortir les oscillations résiduelles.
+//     → Commencer à 0.01, monter par pas de 0.01.
+//     → Si le mouvement devient saccadé   : KD trop élevé.
+//
+//  3. Ajouter KI si le robot s'arrête systématiquement avant la cible (friction).
+//     → Commencer à 0.1, monter prudemment.
+//     → Surveiller I_MAX pour éviter le windup (intégrale qui explose).
+//
+//  Symptômes → actions :
+//    Oscillations           → baisser KP  ou monter KD
+//    Undershoot permanent   → monter KI
+//    Overshoot              → baisser KP  ou monter KD
+//    Mouvement saccadé      → baisser KD
+//    N'atteint pas le seuil → agrandir STOP_MM
+//
+#define ENC_P1_KP         2.0f    // proportionnel  : mm/s par mm d'erreur
+#define ENC_P1_KI         0.3f    // intégral       : mm/s par mm·s (0 pour désactiver)
+#define ENC_P1_KD         0.05f   // dérivé         : amortissement (0 pour désactiver)
+#define ENC_P1_I_MAX    100.0f    // anti-windup    : saturation de l'intégrale (mm/s)
+#define ENC_P1_STOP_MM    3.0f    // seuil d'arrêt  : plus petit = plus précis (mm)
+#define ENC_P1_MIN_SPD    8.0f    // vitesse min    : trop bas = risque de caler (mm/s)
+#define ENC_P1_CORR_MM   20.0f    // correction fin : step-based si erreur > valeur (mm)
+
 // ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────
 #define MATCH_DURATION_MS  100000UL   // durée totale du match (100 s)
 #define MATCH_ENDGAME_MS    80000UL   // déclenchement repli fin de match (80 s)
