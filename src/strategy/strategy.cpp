@@ -161,13 +161,13 @@ void runStrategyYellow(Robot &robot) {
     takeStock (robot, POI::stockYellow_01, ANGLE_WEST);
 
     robot.gotoXYenc(500, 1200, ANGLE_WEST);
-    deposeStock(robot, 20, 1200, ANGLE_WEST);
+    deposeStock(robot, 15, 1200, ANGLE_WEST);
     robot.gotoXYenc(500, 1200, ANGLE_WEST);
 
     takeStock (robot, POI::stockYellow_02, ANGLE_WEST);
 
     robot.gotoXYenc(500, 1200, ANGLE_WEST);
-    deposeStock(robot, 40, 1200, ANGLE_WEST);
+    deposeStock(robot, 35, 1200, ANGLE_WEST);
     robot.gotoXYenc(500, 1200, ANGLE_WEST);
 
     // thermomètre : approche en ligne droite avec détection de blocage
@@ -180,7 +180,11 @@ void runStrategyYellow(Robot &robot) {
     retracteBrasDroit();
 
     robot.turnPID(90);
-    robot.gotoXYenc(1000,850);
+
+    takeStock (robot, POI::stockYellow_04, ANGLE_NORTH);
+
+
+    robot.gotoXYenc(900,900);
 
     robot.disableMotors();
 }
@@ -202,8 +206,9 @@ void runStrategyBlue(Robot &robot) {
 void runNearEndYellow(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
-    // TODO: position de sécurité côté jaune
-    robot.gotoXY(250,250,270);
+
+    robot.gotoXYenc(300,700,ANGLE_NORTH);
+    deposeStock(robot,250,100,ANGLE_NORTH);
     robot.disableMotors();
 }
 

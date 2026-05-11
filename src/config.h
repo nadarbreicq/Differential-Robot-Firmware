@@ -55,10 +55,10 @@
 #define STOCK_WEST_RECAL_MM     285.0f  // X centre robot quand stock plaqué contre bordure Ouest
 
 // ─── CINÉMATIQUE ─────────────────────────────────────────────────────────────
-#define DEFAULT_SPEED_MMS   1000.0f    // mm/s
-#define DEFAULT_ACCEL_MMS2  800.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
-#define TURN_SPEED_MMS      800.0f
-#define TURN_ACCEL_MMS2     800.0f
+#define DEFAULT_SPEED_MMS   2000.0f    // mm/s
+#define DEFAULT_ACCEL_MMS2  2000.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
+#define TURN_SPEED_MMS      2000.0f
+#define TURN_ACCEL_MMS2     2000.0f
 
 // ─── TABLE DE JEU ────────────────────────────────────────────────────────────
 #define TABLE_WIDTH_MM      3000.0f   // axe X (horizontal)
