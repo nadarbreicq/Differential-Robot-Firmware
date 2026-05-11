@@ -34,9 +34,12 @@ public:
     void setPosition(float x_mm, float y_mm, float theta_deg);
 
     // ── Cinématique ───────────────────────────────────────────────────────────
-    void setSpeed(float mmS);
-    void setSpeedPct(float speedPct, float accelPct = -1.0f);  // % de DEFAULT_SPEED/ACCEL (-1 = même % que speed)
-    void resetSpeed();                                          // revient aux valeurs par défaut
+    void  setSpeed(float mmS);
+    void  setAcceleration(float mmS2)   { _motion.setAcceleration(mmS2); }
+    void  setSpeedPct(float speedPct, float accelPct = -1.0f);
+    void  resetSpeed();
+    float getSpeed()        const { return _motion.getSpeed(); }
+    float getAcceleration() const { return _motion.getAcceleration(); }
 
     // ── Détection obstacle ───────────────────────────────────────────────────
     enum class DetectMode : uint8_t {

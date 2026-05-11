@@ -43,20 +43,20 @@ void initActuators() {
     fermerGripper();
 }
 
-void deployerBrasDroit() {
-    servoBrasDroit.moveToPercent(78, 60);
+void deployerBrasDroit(int speed) {
+    servoBrasDroit.moveToPercent(78, speed);
 }
 
-void retracteBrasDroit() {
-    servoBrasDroit.moveToPercent(48, 60);
+void retracteBrasDroit(int speed) {
+    servoBrasDroit.moveToPercent(48, speed);
 }
 
-void deployerBrasGauche() {
-    servoBrasGauche.moveToPercent(80, 60);
+void deployerBrasGauche(int speed) {
+    servoBrasGauche.moveToPercent(80, speed);
 }
 
-void retracteBrasGauche() {
-    servoBrasGauche.moveToPercent(50, 60);
+void retracteBrasGauche(int speed) {
+    servoBrasGauche.moveToPercent(50, speed);
 }
 
 void deployerLifter() {
@@ -68,7 +68,7 @@ void retracterLifter() {
 }
 
 void ouvrirGripper() {
-    servoGripper.moveToPercent(35, 30);
+    servoGripper.moveToPercent(35, 80);
 }
 
 void libererStock() {

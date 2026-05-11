@@ -52,10 +52,10 @@ extern Servo servoGripper;
 
 // ─── Séquences d'actionneurs ──────────────────────────────────────────────────
 void initActuators();
-void deployerBrasDroit();
-void retracteBrasDroit();
-void deployerBrasGauche();
-void retracteBrasGauche();
+void deployerBrasDroit(int speed = 100);
+void retracteBrasDroit(int speed = 100);
+void deployerBrasGauche(int speed = 100);
+void retracteBrasGauche(int speed = 100);
 void deployerLifter();
 void retracterLifter();
 void ouvrirGripper();
