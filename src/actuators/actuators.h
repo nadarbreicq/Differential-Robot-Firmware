@@ -59,5 +59,6 @@ void retracteBrasGauche();
 void deployerLifter();
 void retracterLifter();
 void ouvrirGripper();
+void libererStock();
 void fermerGripper();
 void sequencePrise();

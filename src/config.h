@@ -50,16 +50,26 @@
 #define STOCK_STAGING_MM        150.0f  // recul derrière la position de prise avant l'approche finale
 #define STOCK_DEPOSE_OFFSET_MM  180.0f  // distance centre robot → centre stock en position de dépose
 
+// Recalage X par poussée stock contre bordure Ouest :
+// stock plaqué → face Est du stock à X=150mm → centre robot à X=150+135=285mm
+#define STOCK_WEST_RECAL_MM     285.0f  // X centre robot quand stock plaqué contre bordure Ouest
+
 // ─── CINÉMATIQUE ─────────────────────────────────────────────────────────────
-#define DEFAULT_SPEED_MMS   800.0f    // mm/s
-#define DEFAULT_ACCEL_MMS2  600.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
-#define TURN_SPEED_MMS      500.0f
-#define TURN_ACCEL_MMS2     400.0f
+#define DEFAULT_SPEED_MMS   1000.0f    // mm/s
+#define DEFAULT_ACCEL_MMS2  800.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
+#define TURN_SPEED_MMS      800.0f
+#define TURN_ACCEL_MMS2     800.0f
 
 // ─── TABLE DE JEU ────────────────────────────────────────────────────────────
 #define TABLE_WIDTH_MM      3000.0f   // axe X (horizontal)
 #define TABLE_HEIGHT_MM     2000.0f   // axe Y (vertical, vers le bas)
-#define TABLE_MARGIN_MM     100.0f     // épaisseur marge bord (filtre points LIDAR = murs)
+#define TABLE_MARGIN_MM     100.0f    // épaisseur marge bord (filtre points LIDAR = murs)
+
+// ─── ORIENTATIONS CARDINALES (repère table : 0°=Est, 90°=Nord, sens positif=CCW)
+#define ANGLE_NORTH         90.0f
+#define ANGLE_EAST           0.0f
+#define ANGLE_SOUTH        270.0f
+#define ANGLE_WEST         180.0f
 
 // ─── DÉTECTION OBSTACLE ──────────────────────────────────────────────────────
 #define LIDAR_BODY_DIST_MM  80.0f     // ignore points < 80 mm (intérieur du robot)
@@ -112,7 +122,8 @@
 #define ENC_P1_KI         0.01f    // intégral      : mm/s par (mm · s) — anti-trainage
 #define ENC_P1_KD         0.1f   // dérivé        : amortissement en fin de course
 #define ENC_P1_I_MAX     50.0f    // anti-windup   : saturation intégrale (mm/s)
-#define ENC_P1_STOP_MM    3.0f    // seuil d'arrêt : avg erreur < valeur → stop (mm)
+#define ENC_P1_STOP_MM    5.0f    // seuil d'arrêt translation : erreur avg < valeur → stop (mm)
+#define ENC_P1_STOP_DEG   2.0f    // seuil d'arrêt rotation    : erreur avg < valeur → stop (°)
 #define ENC_P1_MIN_SPD    8.0f    // vitesse min   : en dessous → stopMove() (mm/s)
 
 // ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────

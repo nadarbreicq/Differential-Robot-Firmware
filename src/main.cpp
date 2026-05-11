@@ -150,8 +150,13 @@ static void taskStrategy(void *) {
     if (gDisplay.team == Team::YELLOW) runStrategyYellow(robot);
     else                               runStrategyBlue(robot);
 
-    // ── Repli fin de match (dès 80 s, même si match déjà terminé) ────────────
-    if (robot.isEndgame()) {
+    // ── Attente endgame si la stratégie s'est terminée avant 80 s ───────────
+    while (!robot.isEndgame() && !robot.isMatchOver())
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+    // ── Repli fin de match ────────────────────────────────────────────────────
+    if (!robot.isMatchOver()) {
+        robot.startNearEnd();   // autorise les mouvements malgré isEndgame()
         gDisplay.robot_state = RobotState::ENDGAME;
         if (gDisplay.team == Team::YELLOW) runNearEndYellow(robot);
         else                               runNearEndBlue(robot);

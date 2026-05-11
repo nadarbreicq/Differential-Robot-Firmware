@@ -3,6 +3,7 @@
 #include "../motion/encoder.h"
 #include "../lidar/ld06.h"
 #include "../config.h"
+#include "poi.h"
 
 // Interface haut niveau du robot.
 // Toutes les méthodes sont BLOQUANTES : elles rendent la main quand le mouvement
@@ -12,15 +13,21 @@ public:
     Robot(StepControl &motion, LD06 &lidar);
 
     // ── Déplacements ─────────────────────────────────────────────────────────
-    void go(float mm);                              // relatif, positif = avant
+    void go(float mm);                              // relatif, step-based
+    bool goStall(float mm, uint32_t timeoutMs = 3000); // go avec détection blocage encodeurs
+    void goPID(float mm);                           // relatif, asservi encodeurs
     void turn(float deg);                           // relatif, positif = gauche
-    void gotoXY(float x_mm, float y_mm);            // dead reckoning (pas commandés)
+    void gotoXY(float x_mm, float y_mm);
     void gotoXY(float x_mm, float y_mm, float arrival_deg);
+    void gotoXY(Vec2 poi)                    { gotoXY(poi.x, poi.y); }
+    void gotoXY(Vec2 poi, float arrival_deg) { gotoXY(poi.x, poi.y, arrival_deg); }
 
     // Navigation odométrie encodeurs — double PID position
-    void turnPID(float deg);                               // rotation asservie encodeurs
+    void turnPID(float deg);
     void gotoXYenc(float x_mm, float y_mm);
     void gotoXYenc(float x_mm, float y_mm, float arrival_deg);
+    void gotoXYenc(Vec2 poi)                    { gotoXYenc(poi.x, poi.y); }
+    void gotoXYenc(Vec2 poi, float arrival_deg) { gotoXYenc(poi.x, poi.y, arrival_deg); }
     void setEncoders(QuadEncoder *l, QuadEncoder *r) { _encLeft = l; _encRight = r; }
 
     // ── Pose ─────────────────────────────────────────────────────────────────
@@ -28,6 +35,8 @@ public:
 
     // ── Cinématique ───────────────────────────────────────────────────────────
     void setSpeed(float mmS);
+    void setSpeedPct(float speedPct, float accelPct = -1.0f);  // % de DEFAULT_SPEED/ACCEL (-1 = même % que speed)
+    void resetSpeed();                                          // revient aux valeurs par défaut
 
     // ── Détection obstacle ───────────────────────────────────────────────────
     enum class DetectMode : uint8_t {
@@ -45,6 +54,7 @@ public:
 
     // ── Chrono de match ──────────────────────────────────────────────────────
     void     startMatch();
+    void     startNearEnd() { _nearEndMode = true; }  // désactive les interruptions isEndgame()
     uint32_t matchElapsed() const;
     bool     isEndgame()    const;
     bool     isMatchOver()  const;
@@ -61,11 +71,12 @@ private:
     bool         _obstacleEn = true;
     DetectMode   _detectMode = DetectMode::SIMPLE;
 
+    bool          _nearEndMode = false;
     LidarPoint    _scanBuf[LD06_SCAN_BUF_SIZE];
     QuadEncoder  *_encLeft  = nullptr;
     QuadEncoder  *_encRight = nullptr;
 
-    void _runWheelPID(int32_t tL, int32_t tR, float speed, float accel);
+    void _runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float stopMm = ENC_P1_STOP_MM);
 
     bool _obstacleInDir(float dir_rad);
     bool _obstacleSimple(float dir_rad);

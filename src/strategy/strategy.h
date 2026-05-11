@@ -18,7 +18,9 @@ void runInitBlue(Robot &robot);
 // takeStock  : offset prise  = STOCK_TOOL_OFFSET_MM  (210 mm)
 // deposeStock: offset dépose = STOCK_DEPOSE_OFFSET_MM (180 mm)
 void takeStock (Robot &robot, float x, float y, float angleDeg);
+void takeStock (Robot &robot, Vec2 poi,   float angleDeg);
 void deposeStock(Robot &robot, float x, float y, float angleDeg);
+void deposeStock(Robot &robot, Vec2 poi,   float angleDeg);
 
 // ─── Stratégie de match ───────────────────────────────────────────────────────
 void runStrategyYellow(Robot &robot);

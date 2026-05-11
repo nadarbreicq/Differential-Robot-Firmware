@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(pio run *)",
-      "Bash(~/.platformio/penv/bin/pio run *)"
+      "Bash(~/.platformio/penv/bin/pio run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

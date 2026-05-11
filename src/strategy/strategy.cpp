@@ -75,17 +75,26 @@ void takeStock(Robot &robot, float x, float y, float angleDeg) {
     float stageX = pickX - STOCK_STAGING_MM * cos_a;
     float stageY = pickY + STOCK_STAGING_MM * sin_a;
 
-    // 1. Aller en staging (angle d'arrivée libre — navigation optimale)
-    robot.gotoXYenc(stageX, stageY);
-
-    // 2. S'orienter face au stock depuis le staging
+    // 1. Aller en staging et s'orienter face au stock
     robot.gotoXYenc(stageX, stageY, angleDeg);
 
-    // 3. Avancer en ligne droite vers la position de prise
-    robot.go(STOCK_STAGING_MM);
+    // 2. Approche + recalage
+    if (fabsf(angleDeg - ANGLE_WEST) < 1.0f) {
+        // Pousse le stock contre la bordure Ouest jusqu'au stall.
+        // Stock plaqué → X robot = STOCK_WEST_RECAL_MM (150mm stock + 135mm offset).
+        // Élimine toute dérive X accumulée.
+        robot.setSpeedPct(30, 30); // Change la vitesse et accel pour l'approche, afin de limiter les risques de rebonds
+        robot.goStall(500);
+        robot.setPosition(STOCK_WEST_RECAL_MM, robot.getY(), ANGLE_WEST);
+        robot.resetSpeed(); // remet les vitesses par défaut pour la suite de la stratégie
+    } else {
+        robot.goPID(STOCK_STAGING_MM);
+    }
 
-    // 4. Prendre l'élément
+    // 3. Prendre l'élément (robot déjà en position)
     sequencePrise();
+    robot.goPID(-STOCK_STAGING_MM); // recule pour dégager le stock
+    retracterLifter();
 }
 
 void deposeStock(Robot &robot, float x, float y, float angleDeg) {
@@ -100,20 +109,38 @@ void deposeStock(Robot &robot, float x, float y, float angleDeg) {
     robot.gotoXYenc(depX, depY, angleDeg);
     ouvrirGripper();
     wait(250);
-    robot.go(-100);
+    robot.goPID(-100);
     wait(250);
     fermerGripper();
 }
+
+void takeStock (Robot &robot, Vec2 poi, float angleDeg) { takeStock (robot, poi.x, poi.y, angleDeg); }
+void deposeStock(Robot &robot, Vec2 poi, float angleDeg) { deposeStock(robot, poi.x, poi.y, angleDeg); }
 
 // ─── Calage bordure jaune ─────────────────────────────────────────────────────
 void runInitYellow(Robot &robot) {
     robot.enableMotors();
     robot.disableObstacle();
     initActuators();
-    robot.go(-20);
-    // TODO: plaquer contre les deux bordures côté jaune et enregistrer la pose réelle
-    robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 1000, 0);
-    //robot.gotoXYenc(1000, 1000, 90);  // Test ligne droite
+
+    robot.setSpeedPct(30, 30); // Change la vitesse et accel pour le calage, afin de limiter les risques de rebonds
+
+    // ── Calage X — plaquage contre la bordure Ouest ────────────────────────
+    robot.setPosition(0, 0, ANGLE_EAST);
+    robot.goStall(-150);                 // recule jusqu'au contact de la bordure Ouest
+    robot.setPosition(ROBOT_BACK_TO_CENTER_MM, 0, ANGLE_EAST);   // X calé
+    robot.goPID(375-ROBOT_BACK_TO_CENTER_MM);                       // dégage
+
+    // ── Calage Y — plaquage contre la bordure Nord ─────────────────────────
+    robot.turnPID(-90.0f);               // s'oriente vers le Sud
+    robot.goStall(-150);                 // recule jusqu'au contact de la bordure Nord
+    robot.setPosition(robot.getX(), ROBOT_BACK_TO_CENTER_MM, ANGLE_SOUTH);  // Y calé, X inchangé
+    robot.goPID(225);                       // dégage
+
+    // ── Position de départ ─────────────────────────────────────────────────
+    robot.gotoXYenc(POI::startYellow,270);
+
+    robot.resetSpeed(); // remet les vitesses par défaut pour la stratégie
 }
 
 // ─── Calage bordure bleu ──────────────────────────────────────────────────────
@@ -129,13 +156,31 @@ void runInitBlue(Robot &robot) {
 // ─── Stratégie jaune ──────────────────────────────────────────────────────────
 void runStrategyYellow(Robot &robot) {
     robot.enableObstacle();
+    robot.setSpeedPct(80, 80);
 
-    robot.go(250);
-    robot.gotoXYenc(500, 1500);
-    takeStock(robot, 175, 1600, 180);
+    takeStock (robot, POI::stockYellow_01, ANGLE_WEST);
 
-    robot.gotoXYenc(500, 1000, 180);
-    deposeStock(robot, 50, 1200, 180);
+    robot.gotoXYenc(500, 1200, ANGLE_WEST);
+    deposeStock(robot, 20, 1200, ANGLE_WEST);
+    robot.gotoXYenc(500, 1200, ANGLE_WEST);
+
+    takeStock (robot, POI::stockYellow_02, ANGLE_WEST);
+
+    robot.gotoXYenc(500, 1200, ANGLE_WEST);
+    deposeStock(robot, 40, 1200, ANGLE_WEST);
+    robot.gotoXYenc(500, 1200, ANGLE_WEST);
+
+    // thermomètre : approche en ligne droite avec détection de blocage
+    robot.gotoXYenc(500,1820,ANGLE_EAST);
+    robot.setSpeedPct(30, 30);
+    robot.goStall(-500);
+    robot.setPosition(ROBOT_BACK_TO_CENTER_MM, robot.getY(), ANGLE_EAST);   // X calé
+    deployerBrasDroit();
+    robot.goPID(600);
+    retracteBrasDroit();
+
+    robot.turnPID(90);
+    robot.gotoXYenc(1000,850);
 
     robot.disableMotors();
 }
