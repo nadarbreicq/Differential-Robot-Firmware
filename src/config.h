@@ -1,6 +1,11 @@
 #pragma once
 #include <stdint.h>
 
+// ─── WIFI LOG ────────────────────────────────────────────────────────────────
+// 0 = désactivé (compétition — zéro overhead WiFi)
+// 1 = actif — AP "Karibous", interface web sur http://192.168.4.1
+#define WIFI_LOG_ENABLED    1
+
 // ─── LOGS ────────────────────────────────────────────────────────────────────
 // Les macros LOG_E/W/I/D sont définies dans log.h et wrappent Serial.printf.
 // Les blocs inactifs sont éliminés à la compilation (condition constante).
@@ -153,6 +158,10 @@
 #define TASK_DISPLAY_CORE   1
 #define TASK_DISPLAY_PRIO   1
 #define TASK_DISPLAY_STACK  3072
+
+#define TASK_WIFI_CORE      0         // Core 0 — priorité basse, ne bloque pas la stratégie
+#define TASK_WIFI_PRIO      1
+#define TASK_WIFI_STACK     8192
 
 // ─── BOUTONS ─────────────────────────────────────────────────────────────────
 #define BTN_TIRETTE_PIN     14    // pull-up externe — LOW = tirette en place

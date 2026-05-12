@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Karibous Debug</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #1a1a1a; color: #e0e0e0;
+  font-family: 'Courier New', monospace; font-size: 13px;
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* ── Header ── */
+#header {
+  background: #242424; padding: 7px 14px;
+  display: flex; align-items: center; gap: 14px;
+  border-bottom: 1px solid #333; flex-shrink: 0;
+}
+#header h1 { font-size: 15px; color: #fff; letter-spacing: 1px; }
+#ws-status { padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+.connected    { background: #1e3d1a; color: #6ddb60; border: 1px solid #3d7a35; }
+.disconnected { background: #3d1a1a; color: #db6060; border: 1px solid #7a3535; }
+#uptime { color: #666; font-size: 11px; margin-left: auto; }
+
+/* ── Layout principal ── */
+#content { flex: 1; display: flex; overflow: hidden; }
+
+/* ── Panneau terrain ── */
+#field-panel { flex-shrink: 0; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+#field-wrap { position: relative; display: inline-block; border: 1px solid #333; border-radius: 4px; overflow: hidden; }
+#field-img    { display: block; width: 600px; height: 400px; }
+#field-canvas { position: absolute; top: 0; left: 0; width: 600px; height: 400px; }
+#poi-tooltip {
+  position: absolute; display: none; pointer-events: none; z-index: 10;
+  background: rgba(10,10,10,0.88); border: 1px solid #555; border-radius: 4px;
+  padding: 5px 9px; font-size: 11px; color: #e0e0e0; white-space: nowrap; line-height: 1.6;
+}
+
+#pose-bar {
+  background: #1e2e1e; border: 1px solid #2d4a2d; border-radius: 4px;
+  padding: 5px 10px; font-size: 12px; color: #6ddb60;
+  display: flex; gap: 16px; align-items: center;
+}
+#pose-bar span { color: #888; }
+
+/* ── Radar LIDAR ── */
+#radar-wrap {
+  background: #111; border: 1px solid #333; border-radius: 4px;
+  display: flex; align-items: center; gap: 0; overflow: hidden;
+}
+#radar-canvas { display: block; flex-shrink: 0; }
+#radar-stats {
+  flex: 1; padding: 10px 14px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+#radar-stats .rs-label { color: #666; font-size: 11px; margin-bottom: 2px; }
+#radar-stats .rs-val   { color: #e0e0e0; font-size: 13px; }
+#radar-stats .rs-val.alert { color: #ff6b6b; }
+
+/* ── Badge équipe ── */
+#team-badge {
+  padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: bold;
+  border: 1px solid #555; background: #2a2a2a; color: #888; transition: all .3s;
+}
+#team-badge.yellow { background: #3d3000; color: #ffd43b; border-color: #7a6000; }
+#team-badge.blue   { background: #001a3d; color: #74c0fc; border-color: #00428a; }
+
+/* ── Actionneurs ── */
+#act-panel {
+  background: #111; border: 1px solid #333; border-radius: 4px; overflow: hidden;
+}
+#act-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 12px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a;
+  font-size: 12px; font-weight: bold; color: #888; letter-spacing: 1px;
+}
+#act-lock { font-size: 11px; font-weight: normal; }
+#act-lock.unlocked { color: #6ddb60; }
+#act-lock.locked   { color: #666; }
+#act-sliders { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.servo-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.servo-label { width: 80px; font-size: 12px; color: #aaa; flex-shrink: 0; }
+.servo-row input[type=range] {
+  flex: 1; height: 4px; accent-color: #6ddb60; cursor: pointer;
+}
+.servo-row input[type=range]:disabled { accent-color: #444; cursor: not-allowed; opacity: 0.5; }
+.servo-val { width: 38px; text-align: right; font-size: 12px; color: #e0e0e0; flex-shrink: 0; }
+#act-btns {
+  padding: 6px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px;
+  border-top: 1px solid #2a2a2a;
+}
+.act-btn {
+  padding: 3px 10px; background: #222; border: 1px solid #444;
+  color: #bbb; border-radius: 3px; cursor: pointer; font-size: 12px;
+  font-family: monospace;
+}
+.act-btn:hover:not(:disabled) { background: #2d3d2d; border-color: #5a7a5a; color: #6ddb60; }
+.act-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.act-btn.seq { border-color: #5a4a00; color: #ffd43b; }
+.act-btn.seq:hover:not(:disabled) { background: #2d2a00; }
+
+/* ── Panneau logs ── */
+#log-panel {
+  flex: 1; display: flex; flex-direction: column;
+  border-left: 1px solid #333; overflow: hidden;
+}
+
+#filters {
+  padding: 6px 10px; background: #222;
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  border-bottom: 1px solid #333; flex-shrink: 0;
+}
+.lvl-btn {
+  padding: 2px 10px; border-radius: 3px; cursor: pointer;
+  font-family: monospace; font-size: 12px; font-weight: bold;
+  border: 1px solid #444; background: #2a2a2a; color: #888;
+  transition: all .15s;
+}
+.lvl-btn.active-E { background: #3d1515; color: #ff6b6b; border-color: #7a2e2e; }
+.lvl-btn.active-W { background: #3d2b10; color: #ffa94d; border-color: #7a5520; }
+.lvl-btn.active-I { background: #1a3d22; color: #6ddb60; border-color: #2d6e42; }
+.lvl-btn.active-D { background: #152a3d; color: #74c0fc; border-color: #2a5580; }
+
+#tag-filter {
+  background: #2a2a2a; border: 1px solid #444; color: #e0e0e0;
+  padding: 2px 8px; border-radius: 3px; font-family: monospace; font-size: 12px; width: 110px;
+}
+#tag-filter::placeholder { color: #555; }
+.tool-btn {
+  padding: 2px 10px; background: #2a2a2a; border: 1px solid #444;
+  color: #aaa; border-radius: 3px; cursor: pointer; font-size: 12px;
+}
+.tool-btn:hover { background: #333; }
+.tool-btn.active { background: #1a3d22; border-color: #2d6e42; color: #6ddb60; }
+
+#log-count { color: #555; font-size: 11px; margin-left: auto; }
+
+#logs { flex: 1; overflow-y: auto; padding: 4px 6px; }
+#logs::-webkit-scrollbar { width: 6px; }
+#logs::-webkit-scrollbar-track { background: #1a1a1a; }
+#logs::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+.log-line {
+  padding: 1px 4px; border-radius: 2px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-all;
+}
+.log-line:hover { background: #252525; }
+.log-ts  { color: #555; }
+.log-E   { color: #ff6b6b; }
+.log-W   { color: #ffa94d; }
+.log-I   { color: #6ddb60; }
+.log-D   { color: #74c0fc; }
+.log-msg { color: #d0d0d0; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>&#128007; Karibous Debug</h1>
+  <span id="ws-status" class="disconnected">&#9679; Déconnecté</span>
+  <span id="team-badge">— Équipe</span>
+  <span id="uptime"></span>
+</div>
+
+<div id="content">
+
+  <!-- ── Terrain ── -->
+  <div id="field-panel">
+    <div id="field-wrap">
+      <img id="field-img" src="/field.jpg" alt="Terrain">
+      <canvas id="field-canvas" width="600" height="400"></canvas>
+      <div id="poi-tooltip"></div>
+    </div>
+    <div id="pose-bar">
+      <span>X</span> <b id="px">—</b> mm
+      <span>Y</span> <b id="py">—</b> mm
+      <span>&#952;</span> <b id="pa">—</b>°
+      <span>&#x2502;</span>
+      <b id="pstate" style="color:#fff">—</b>
+      <span>&#x2502;</span>
+      <span>Nav</span> <b id="pnav">—</b>
+      <span style="margin-left:auto">&#x1F5B1;</span> <b id="cursor-coord" style="color:#555">—</b>
+    </div>
+
+    <!-- ── Radar LIDAR ── -->
+    <div id="radar-wrap">
+      <canvas id="radar-canvas" width="220" height="220"></canvas>
+      <div id="radar-stats">
+        <div>
+          <div class="rs-label">Point le plus proche</div>
+          <div class="rs-val" id="rs-closest">— mm</div>
+        </div>
+        <div>
+          <div class="rs-label">Points détectés</div>
+          <div class="rs-val" id="rs-count">—</div>
+        </div>
+        <div>
+          <div class="rs-label">Avant (±30°)</div>
+          <div class="rs-val" id="rs-front">— mm</div>
+        </div>
+        <div>
+          <div class="rs-label">Arrière (±30°)</div>
+          <div class="rs-val" id="rs-back">— mm</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Actionneurs ── -->
+    <div id="act-panel">
+      <div id="act-header">
+        <span>ACTIONNEURS</span>
+        <span id="act-lock" class="locked">&#128274; Hors pré-match</span>
+      </div>
+      <div id="act-sliders">
+        <div class="servo-row">
+          <span class="servo-label">Bras Droit</span>
+          <input type="range" id="sl-brasDroit" min="0" max="100" value="48" disabled
+                 oninput="sendServo('brasDroit', this.value)">
+          <span class="servo-val" id="sv-brasDroit">48%</span>
+        </div>
+        <div class="servo-row">
+          <span class="servo-label">Bras Gauche</span>
+          <input type="range" id="sl-brasGauche" min="0" max="100" value="50" disabled
+                 oninput="sendServo('brasGauche', this.value)">
+          <span class="servo-val" id="sv-brasGauche">50%</span>
+        </div>
+        <div class="servo-row">
+          <span class="servo-label">Lifter</span>
+          <input type="range" id="sl-lifter" min="0" max="100" value="14" disabled
+                 oninput="sendServo('lifter', this.value)">
+          <span class="servo-val" id="sv-lifter">14%</span>
+        </div>
+        <div class="servo-row">
+          <span class="servo-label">Gripper</span>
+          <input type="range" id="sl-gripper" min="0" max="100" value="0" disabled
+                 oninput="sendServo('gripper', this.value)">
+          <span class="servo-val" id="sv-gripper">0%</span>
+        </div>
+      </div>
+      <div id="act-btns">
+        <button class="act-btn seq" id="btn-seq-init"  onclick="sendSeq('init')"  disabled>&#x21BA; Init</button>
+        <button class="act-btn seq" id="btn-seq-prise" onclick="sendSeq('prise')" disabled>&#x1F9F2; Prise</button>
+        <button class="act-btn" id="btn-ouvrir" onclick="sendServo('gripper','35')" disabled>Gripper &#x25C1;</button>
+        <button class="act-btn" id="btn-fermer" onclick="sendServo('gripper','0')"  disabled>Gripper &#x25B7;</button>
+        <button class="act-btn" id="btn-liftup" onclick="sendServo('lifter','90')"  disabled>Lift &#x2191;</button>
+        <button class="act-btn" id="btn-liftdn" onclick="sendServo('lifter','14')"  disabled>Lift &#x2193;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Logs ── -->
+  <div id="log-panel">
+    <div id="filters">
+      <button class="lvl-btn active-E" id="btn-E" onclick="toggleLevel('E')">E</button>
+      <button class="lvl-btn active-W" id="btn-W" onclick="toggleLevel('W')">W</button>
+      <button class="lvl-btn active-I" id="btn-I" onclick="toggleLevel('I')">I</button>
+      <button class="lvl-btn active-D" id="btn-D" onclick="toggleLevel('D')">D</button>
+      <input id="tag-filter" placeholder="Tag…" oninput="renderLogs()">
+      <button class="tool-btn" onclick="clearLogs()">Effacer</button>
+      <button class="tool-btn active" id="as-btn" onclick="toggleAutoscroll()">&#8595; Auto</button>
+      <span id="log-count">0 logs</span>
+    </div>
+    <div id="logs"></div>
+  </div>
+
+</div>
+
+<script>
+// ── Constantes terrain ──────────────────────────────────────────────────────
+const FIELD_W_MM = 3000, FIELD_H_MM = 2000;
+const CVS_W = 600, CVS_H = 400;
+const SX = CVS_W / FIELD_W_MM, SY = CVS_H / FIELD_H_MM;   // 0.2 px/mm
+
+// ── Constantes radar ────────────────────────────────────────────────────────
+const RDR_CX = 110, RDR_CY = 110, RDR_R = 100;   // centre et rayon du radar (px)
+const RDR_MAX_MM = 1500;                           // portée affichée (mm)
+const RDR_SCALE  = RDR_R / RDR_MAX_MM;            // px/mm
+// Zone détection obstacle (depuis config.h)
+const OBS_DETECT_MM = 400, OBS_WIDTH_MM = 200;
+
+// ── État ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('field-canvas');
+const ctx    = canvas.getContext('2d');
+const rdrCanvas = document.getElementById('radar-canvas');
+const rdrCtx    = rdrCanvas.getContext('2d');
+let ws            = null;
+let lastLidarTime = 0;
+let logs         = [];
+let visibleLevels= new Set(['E','W','I','D']);
+let autoscroll   = true;
+let startTime    = null;
+let pose         = {x:0, y:0, a:0, state:'—', tm:'?'};
+let needRender   = false;   // dirty flag pour renderLogs() (incrémental)
+
+// ── Filtres ────────────────────────────────────────────────────────────────
+function toggleLevel(l) {
+  if (visibleLevels.has(l)) visibleLevels.delete(l);
+  else visibleLevels.add(l);
+  const btn = document.getElementById('btn-' + l);
+  if (visibleLevels.has(l)) btn.className = 'lvl-btn active-' + l;
+  else                       btn.className = 'lvl-btn';
+  renderLogs();
+}
+
+function toggleAutoscroll() {
+  autoscroll = !autoscroll;
+  document.getElementById('as-btn').classList.toggle('active', autoscroll);
+}
+
+function clearLogs() {
+  logs = [];
+  document.getElementById('logs').innerHTML = '';
+  document.getElementById('log-count').textContent = '0 logs';
+}
+
+// ── Rendu logs (reconstruction complète) ───────────────────────────────────
+function renderLogs() {
+  const tagF = document.getElementById('tag-filter').value.toUpperCase();
+  const logsEl = document.getElementById('logs');
+  logsEl.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  let shown = 0;
+  for (const e of logs) {
+    if (!visibleLevels.has(e.l)) continue;
+    if (tagF && !e.t.toUpperCase().includes(tagF)) continue;
+    frag.appendChild(makeLine(e));
+    shown++;
+  }
+  logsEl.appendChild(frag);
+  document.getElementById('log-count').textContent = shown + ' / ' + logs.length + ' logs';
+  if (autoscroll) logsEl.scrollTop = logsEl.scrollHeight;
+}
+
+// ── Ajout incrémental d'une ligne ─────────────────────────────────────────
+function appendLine(e) {
+  const tagF = document.getElementById('tag-filter').value.toUpperCase();
+  if (!visibleLevels.has(e.l)) return;
+  if (tagF && !e.t.toUpperCase().includes(tagF)) return;
+  const logsEl = document.getElementById('logs');
+  logsEl.appendChild(makeLine(e));
+  if (autoscroll) logsEl.scrollTop = logsEl.scrollHeight;
+}
+
+function makeLine(e) {
+  const ts = (e.ts / 1000).toFixed(1).padStart(7);
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML =
+    '<span class="log-ts">[' + ts + 's]</span> ' +
+    '<span class="log-' + e.l + '">[' + e.l + '][' + esc(e.t) + ']</span> ' +
+    '<span class="log-msg">' + esc(e.m) + '</span>';
+  return div;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Radar LIDAR ────────────────────────────────────────────────────────────
+// Convention après correction : 0°(avant)=droite, 90°(gauche robot)=bas
+// Formule : px = cx + cos(a)*d,  py = cy + sin(a)*d
+function drawRadar(pts) {
+  rdrCtx.clearRect(0, 0, 220, 220);
+
+  // Fond
+  rdrCtx.fillStyle = '#0d0d0d';
+  rdrCtx.beginPath();
+  rdrCtx.arc(RDR_CX, RDR_CY, RDR_R, 0, 2 * Math.PI);
+  rdrCtx.fill();
+
+  // Cercles de distance + labels
+  rdrCtx.strokeStyle = '#2a2a2a';
+  rdrCtx.lineWidth = 1;
+  [500, 1000, 1500].forEach(mm => {
+    const r = mm * RDR_SCALE;
+    rdrCtx.beginPath();
+    rdrCtx.arc(RDR_CX, RDR_CY, r, 0, 2 * Math.PI);
+    rdrCtx.stroke();
+    rdrCtx.fillStyle = '#444';
+    rdrCtx.font = '9px monospace';
+    rdrCtx.fillText(mm + 'mm', RDR_CX - r + 2, RDR_CY - 2);
+  });
+
+  // Croix
+  rdrCtx.strokeStyle = '#222';
+  rdrCtx.beginPath();
+  rdrCtx.moveTo(RDR_CX, RDR_CY - RDR_R); rdrCtx.lineTo(RDR_CX, RDR_CY + RDR_R);
+  rdrCtx.moveTo(RDR_CX - RDR_R, RDR_CY); rdrCtx.lineTo(RDR_CX + RDR_R, RDR_CY);
+  rdrCtx.stroke();
+
+  // Zones détection obstacle — avant=haut, arrière=bas
+  const dw = (OBS_WIDTH_MM / 2) * RDR_SCALE;
+  const dd = OBS_DETECT_MM * RDR_SCALE;
+  rdrCtx.fillStyle   = 'rgba(255,180,0,0.08)';
+  rdrCtx.strokeStyle = 'rgba(255,180,0,0.3)';
+  rdrCtx.lineWidth = 1;
+  rdrCtx.fillRect(RDR_CX - dw, RDR_CY - dd, dw * 2, dd);   // avant (haut)
+  rdrCtx.strokeRect(RDR_CX - dw, RDR_CY - dd, dw * 2, dd);
+  rdrCtx.fillRect(RDR_CX - dw, RDR_CY,       dw * 2, dd);   // arrière (bas)
+  rdrCtx.strokeRect(RDR_CX - dw, RDR_CY,     dw * 2, dd);
+
+  // Contour radar
+  rdrCtx.strokeStyle = '#333';
+  rdrCtx.lineWidth = 1;
+  rdrCtx.beginPath();
+  rdrCtx.arc(RDR_CX, RDR_CY, RDR_R, 0, 2 * Math.PI);
+  rdrCtx.stroke();
+
+  // Points LIDAR — px = cx + cos(a)*d, py = cy + sin(a)*d
+  let closest = Infinity, frontDist = Infinity, backDist = Infinity;
+  for (const [a, d] of pts) {
+    const rad = a * Math.PI / 180;
+    const dpx = d * RDR_SCALE;
+    const px  = RDR_CX + Math.cos(rad) * dpx;
+    const py  = RDR_CY + Math.sin(rad) * dpx;
+    // Clip au cercle
+    const dx = px - RDR_CX, dy = py - RDR_CY;
+    if (dx * dx + dy * dy > RDR_R * RDR_R) continue;
+
+    const t = Math.min(d / RDR_MAX_MM, 1);
+    rdrCtx.fillStyle = `rgb(${Math.round(255*t)},${Math.round(220*(1-t))},40)`;
+    rdrCtx.fillRect(px - 1.5, py - 1.5, 3, 3);
+
+    if (d < closest) closest = d;
+    const absA = ((a % 360) + 360) % 360;
+    if (absA <= 30 || absA >= 330)          { if (d < frontDist) frontDist = d; }
+    if (absA >= 150 && absA <= 210)         { if (d < backDist)  backDist  = d; }
+  }
+
+  // Robot au centre
+  rdrCtx.beginPath();
+  rdrCtx.arc(RDR_CX, RDR_CY, 5, 0, 2 * Math.PI);
+  rdrCtx.fillStyle = 'rgba(255,80,80,0.9)';
+  rdrCtx.fill();
+  rdrCtx.strokeStyle = '#fff';
+  rdrCtx.lineWidth = 1;
+  rdrCtx.stroke();
+  // Flèche avant → haut
+  rdrCtx.beginPath();
+  rdrCtx.moveTo(RDR_CX, RDR_CY);
+  rdrCtx.lineTo(RDR_CX, RDR_CY - 14);
+  rdrCtx.strokeStyle = '#fff';
+  rdrCtx.lineWidth = 2;
+  rdrCtx.stroke();
+
+  // Label "AV" en haut
+  rdrCtx.fillStyle = '#555';
+  rdrCtx.font = '9px monospace';
+  rdrCtx.fillText('AV', RDR_CX + 3, RDR_CY - RDR_R + 10);
+
+  // Stats
+  const fmt = d => d === Infinity ? '—' : d + ' mm';
+  const isAlert = d => d !== Infinity && d < OBS_DETECT_MM;
+  document.getElementById('rs-closest').textContent = fmt(closest);
+  document.getElementById('rs-closest').className   = 'rs-val' + (isAlert(closest) ? ' alert' : '');
+  document.getElementById('rs-count').textContent   = pts.length;
+  document.getElementById('rs-front').textContent   = fmt(frontDist);
+  document.getElementById('rs-front').className     = 'rs-val' + (isAlert(frontDist) ? ' alert' : '');
+  document.getElementById('rs-back').textContent    = fmt(backDist);
+  document.getElementById('rs-back').className      = 'rs-val' + (isAlert(backDist) ? ' alert' : '');
+}
+
+// ── POIs (depuis poi.h) ────────────────────────────────────────────────────
+const POIS = [
+  // Départs
+  {x:375,  y:225,  label:'DY',  name:'startYellow',       cat:'startY'},
+  {x:715,  y:100,  label:'DYn', name:'startYellow_ninja', cat:'startY'},
+  {x:2625, y:225,  label:'DB',  name:'startBlue',         cat:'startB'},
+  {x:2285, y:100,  label:'DBn', name:'startBlue_ninja',   cat:'startB'},
+  // Garde-manger
+  {x:1250, y:550,  label:'P1',  name:'pantry_01', cat:'pantry'},
+  {x:1750, y:550,  label:'P2',  name:'pantry_02', cat:'pantry'},
+  {x:100,  y:1200, label:'P3',  name:'pantry_03', cat:'pantry'},
+  {x:800,  y:1200, label:'P4',  name:'pantry_04', cat:'pantry'},
+  {x:1500, y:1200, label:'P5',  name:'pantry_05', cat:'pantry'},
+  {x:2200, y:1200, label:'P6',  name:'pantry_06', cat:'pantry'},
+  {x:2900, y:1200, label:'P7',  name:'pantry_07', cat:'pantry'},
+  {x:700,  y:1900, label:'P8',  name:'pantry_08', cat:'pantry'},
+  {x:1500, y:1900, label:'P9',  name:'pantry_09', cat:'pantry'},
+  {x:2300, y:1900, label:'P10', name:'pantry_10', cat:'pantry'},
+  // Frigo
+  {x:1100, y:280,  label:'FY1', name:'FridgeYellow_01', cat:'fridgeY'},
+  {x:1350, y:225,  label:'FY2', name:'FridgeYellow_02', cat:'fridgeY'},
+  {x:1900, y:280,  label:'FB1', name:'FridgeBlue_01',   cat:'fridgeB'},
+  {x:1650, y:225,  label:'FB2', name:'FridgeBlue_02',   cat:'fridgeB'},
+  // Stock jaune
+  {x:175,  y:800,  label:'SY1', name:'stockYellow_01',  cat:'stockY'},
+  {x:175,  y:1600, label:'SY2', name:'stockYellow_02',  cat:'stockY'},
+  {x:1100, y:1825, label:'SY3', name:'stockYellow_03',  cat:'stockY'},
+  {x:1150, y:1200, label:'SY4', name:'stockYellow_04',  cat:'stockY'},
+  {x:800,  y:325,  label:'SYn', name:'stockNinjaYellow', cat:'stockY'},
+  // Stock bleu
+  {x:2825, y:800,  label:'SB1', name:'stockBlue_01',   cat:'stockB'},
+  {x:2825, y:1600, label:'SB2', name:'stockBlue_02',   cat:'stockB'},
+  {x:1900, y:1825, label:'SB3', name:'stockBlue_03',   cat:'stockB'},
+  {x:1850, y:1200, label:'SB4', name:'stockBlue_04',   cat:'stockB'},
+  {x:2200, y:325,  label:'SBn', name:'stockNinjaBlue', cat:'stockB'},
+];
+const POI_STYLE = {
+  startY:  {fill:'rgba(255,212,59,0.85)',  stroke:'#b8960c', r:5},
+  startB:  {fill:'rgba(116,192,252,0.85)', stroke:'#1c7ed6', r:5},
+  pantry:  {fill:'rgba(180,180,180,0.7)',  stroke:'#888',    r:3},
+  fridgeY: {fill:'rgba(255,212,59,0.7)',   stroke:'#b8960c', r:3},
+  fridgeB: {fill:'rgba(116,192,252,0.7)',  stroke:'#1c7ed6', r:3},
+  stockY:  {fill:'rgba(105,219,124,0.85)', stroke:'#2f9e44', r:4},
+  stockB:  {fill:'rgba(116,192,252,0.85)', stroke:'#1864ab', r:4},
+};
+
+function drawPOIs() {
+  ctx.lineWidth = 1;
+  for (const p of POIS) {
+    const px = p.x * SX, py = p.y * SY;
+    const s  = POI_STYLE[p.cat];
+    // Halo noir
+    ctx.beginPath();
+    ctx.arc(px, py, s.r + 2.5, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fill();
+    // Point coloré
+    ctx.beginPath();
+    ctx.arc(px, py, s.r, 0, 2 * Math.PI);
+    ctx.fillStyle   = s.fill;
+    ctx.strokeStyle = s.stroke;
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+// ── Interaction souris sur le terrain ──────────────────────────────────────
+const tooltip     = document.getElementById('poi-tooltip');
+const cursorCoord = document.getElementById('cursor-coord');
+
+document.getElementById('field-canvas').addEventListener('mousemove', e => {
+  const rect = e.target.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // Coordonnées terrain
+  const tx = Math.round(mx / SX), ty = Math.round(my / SY);
+  cursorCoord.textContent = `X=${tx} Y=${ty}`;
+
+  // Survol POI (seuil 10px)
+  let found = null;
+  for (const p of POIS) {
+    const dx = mx - p.x * SX, dy = my - p.y * SY;
+    if (dx * dx + dy * dy < 100) { found = p; break; }
+  }
+  if (found) {
+    tooltip.style.display = 'block';
+    const TW = 165, TH = 46;
+    const tipLeft = (mx + 12 + TW > CVS_W) ? mx - TW - 8 : mx + 12;
+    const tipTop  = (my - TH - 6  < 0)     ? my + 8       : my - TH - 6;
+    tooltip.style.left = tipLeft + 'px';
+    tooltip.style.top  = tipTop  + 'px';
+    tooltip.innerHTML  = '<b>' + found.name + '</b><br>X=' + found.x + '&nbsp;Y=' + found.y + ' mm';
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+document.getElementById('field-canvas').addEventListener('mouseleave', () => {
+  tooltip.style.display  = 'none';
+  cursorCoord.textContent = '—';
+});
+
+// ── Terrain ────────────────────────────────────────────────────────────────
+function drawPose() {
+  ctx.clearRect(0, 0, CVS_W, CVS_H);
+
+  drawPOIs();
+
+  const px  = pose.x * SX;
+  const py  = pose.y * SY;
+  const rad = pose.a * Math.PI / 180;
+
+  // Ombre
+  ctx.beginPath();
+  ctx.arc(px, py, 10, 0, 2 * Math.PI);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fill();
+
+  // Corps robot
+  ctx.beginPath();
+  ctx.arc(px, py, 8, 0, 2 * Math.PI);
+  ctx.fillStyle = 'rgba(255, 80, 80, 0.9)';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Flèche direction (0°=Est, 90°=Nord → Y inversé sur canvas)
+  const dx = Math.cos(rad) * 18;
+  const dy = -Math.sin(rad) * 18;
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(px + dx, py + dy);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket('ws://' + location.hostname + ':81');
+
+  ws.onopen = () => {
+    document.getElementById('ws-status').textContent = '● Connecté';
+    document.getElementById('ws-status').className = 'connected';
+    startTime = Date.now();
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-status').textContent = '● Déconnecté';
+    document.getElementById('ws-status').className = 'disconnected';
+    setTimeout(connect, 2000);
+  };
+
+  ws.onmessage = ev => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch(_) { return; }
+
+    if (d.type === 'pose') {
+      pose = d;
+      drawPose();
+      document.getElementById('px').textContent     = d.x.toFixed(0);
+      document.getElementById('py').textContent     = d.y.toFixed(0);
+      document.getElementById('pa').textContent     = d.a.toFixed(1);
+      document.getElementById('pstate').textContent = d.state;
+      document.getElementById('pnav').textContent   =
+        d.nd > 0.5 ? d.nd.toFixed(0) + ' mm / Δ' + d.na.toFixed(1) + '°' : '—';
+      // Badge équipe
+      const badge = document.getElementById('team-badge');
+      if (d.tm === 'Y') { badge.textContent = '■ JAUNE'; badge.className = 'yellow'; }
+      else              { badge.textContent = '■ BLEU';  badge.className = 'blue';   }
+      // Contrôle actionneurs
+      setActControl(canControl());
+
+    } else if (d.type === 'lidar') {
+      lastLidarTime = Date.now();
+      drawRadar(d.pts);
+
+    } else if (d.type === 'act') {
+      updateSlider('brasDroit',  d.bd);
+      updateSlider('brasGauche', d.bg);
+      updateSlider('lifter',     d.li);
+      updateSlider('gripper',    d.gr);
+
+    } else if (d.l) {
+
+      logs.push(d);
+      if (logs.length > 1000) logs.splice(0, 200);   // garde les 800 derniers
+      appendLine(d);
+      document.getElementById('log-count').textContent =
+        document.getElementById('logs').childElementCount + ' / ' + logs.length + ' logs';
+    }
+  };
+}
+
+// ── Radar timeout — grise si pas de données depuis >2s ─────────────────────
+setInterval(() => {
+  if (lastLidarTime > 0 && Date.now() - lastLidarTime > 2000) {
+    rdrCtx.clearRect(0, 0, 220, 220);
+    rdrCtx.fillStyle = '#0d0d0d';
+    rdrCtx.beginPath();
+    rdrCtx.arc(RDR_CX, RDR_CY, RDR_R, 0, 2 * Math.PI);
+    rdrCtx.fill();
+    rdrCtx.strokeStyle = '#222';
+    rdrCtx.lineWidth = 1;
+    rdrCtx.stroke();
+    rdrCtx.fillStyle = '#444';
+    rdrCtx.font = '11px monospace';
+    rdrCtx.textAlign = 'center';
+    rdrCtx.fillText('LIDAR — match en cours', RDR_CX, RDR_CY);
+    rdrCtx.textAlign = 'left';
+  }
+}, 500);
+
+// ── Uptime ─────────────────────────────────────────────────────────────────
+setInterval(() => {
+  if (!startTime) return;
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(s / 60);
+  document.getElementById('uptime').textContent =
+    'Connecté depuis ' + (m ? m + 'min ' : '') + (s % 60) + 's';
+}, 1000);
+
+// ── Actionneurs ────────────────────────────────────────────────────────────
+const ACT_IDS = ['brasDroit','brasGauche','lifter','gripper'];
+const ACT_CTRL_BTNS = ['btn-seq-init','btn-seq-prise','btn-ouvrir','btn-fermer','btn-liftup','btn-liftdn'];
+
+function canControl() {
+  return pose.state === 'APPUYER INIT';   // uniquement avant le bouton init
+}
+
+function setActControl(enabled) {
+  const lock = document.getElementById('act-lock');
+  lock.textContent  = enabled ? '&#x1F513; Contrôle actif' : '&#x1F512; Hors pré-match';
+  lock.className    = enabled ? 'unlocked' : 'locked';
+  ACT_IDS.forEach(id => {
+    document.getElementById('sl-' + id).disabled = !enabled;
+  });
+  ACT_CTRL_BTNS.forEach(id => {
+    document.getElementById(id).disabled = !enabled;
+  });
+}
+
+function sendServo(id, val) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  document.getElementById('sv-' + id).textContent = Math.round(val) + '%';
+  ws.send(JSON.stringify({type:'servo', id:id, val:parseFloat(val)}));
+}
+
+function sendSeq(id) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({type:'servo', id:'seq_' + id, val:0}));
+}
+
+function updateSlider(id, val) {
+  if (isNaN(val) || val < 0) return;
+  document.getElementById('sl-' + id).value = val;
+  document.getElementById('sv-' + id).textContent = Math.round(val) + '%';
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+drawPose();
+connect();
+</script>
+</body>
+</html>
