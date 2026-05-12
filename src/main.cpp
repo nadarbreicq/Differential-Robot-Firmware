@@ -2,6 +2,7 @@
 #include <math.h>
 #include <Wire.h>
 #include "config.h"
+#include "log.h"
 #include "lidar/ld06.h"
 #include "motion/step_control.h"
 #include "strategy/robot.h"
@@ -167,7 +168,7 @@ static void taskStrategy(void *) {
     robot.disableMotors();
     actuatorsDisable();
     gDisplay.robot_state = RobotState::DONE;
-    ESP_LOGI("MAIN", "Match terminé");
+    LOG_I("MAIN", "Match termine");
     vTaskDelete(nullptr);
 }
 
@@ -219,8 +220,8 @@ void loop() {
     gDisplay.pose_theta_deg = motion.getThetaDeg();
 
 
-    // Log match — série toutes les 500ms pendant le match
-    if (gDisplay.match_start_ms > 0 && now - lastMatchLog >= 500) {
+    // Log match — série toutes les 500ms pendant le match (LOG_LEVEL >= 3)
+    if (LOG_LEVEL >= 3 && gDisplay.match_start_ms > 0 && now - lastMatchLog >= 500) {
         lastMatchLog = now;
         uint32_t elapsed = (now - gDisplay.match_start_ms) / 1000;
         Serial.printf("[%3lus] %s | Est(%5.0f,%5.0f,%+5.1f) Enc(%5.0f,%5.0f,%+5.1f)\n",

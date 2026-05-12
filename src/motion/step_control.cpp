@@ -1,9 +1,7 @@
 #include "step_control.h"
+#include "../log.h"
 #include <math.h>
-#include "esp_log.h"
 #include "driver/gpio.h"
-
-static const char *TAG = "STEP";
 
 StepControl::StepControl() {}
 
@@ -12,7 +10,7 @@ bool StepControl::begin() {
 
     _stepL = _engine.stepperConnectToPin(STEPPER_L_STEP_PIN);
     _stepR = _engine.stepperConnectToPin(STEPPER_R_STEP_PIN);
-    if (!_stepL || !_stepR) { ESP_LOGE(TAG, "stepperConnectToPin failed"); return false; }
+    if (!_stepL || !_stepR) { LOG_E("STEP", "stepperConnectToPin failed"); return false; }
 
     _stepL->setDirectionPin(STEPPER_L_DIR_PIN, STEPPER_L_INVERT);
     _stepR->setDirectionPin(STEPPER_R_DIR_PIN, STEPPER_R_INVERT);
@@ -54,10 +52,10 @@ void StepControl::startGo(float mm) {
     _refL = _stepL->getCurrentPosition();
     _refR = _stepR->getCurrentPosition();
     int32_t steps = _mmToSteps(mm);
-    ESP_LOGI(TAG, "go %.0fmm → %ld pas  spd=%lu Hz  acc=%lu stp/s²",
-             mm, (long)steps,
-             (unsigned long)_mmSToHz(_speed),
-             (unsigned long)((uint32_t)(_accel * STEPS_PER_MM)));
+    LOG_D("STEP", "go %.0fmm -> %ld pas  spd=%lu Hz  acc=%lu stp/s2",
+          mm, (long)steps,
+          (unsigned long)_mmSToHz(_speed),
+          (unsigned long)((uint32_t)(_accel * STEPS_PER_MM)));
     _stepL->move(steps);
     _stepR->move(steps);
 }

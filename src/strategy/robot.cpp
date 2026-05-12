@@ -1,9 +1,7 @@
 #include "robot.h"
 #include "../display/oled.h"
+#include "../log.h"
 #include <math.h>
-#include "esp_log.h"
-
-static const char *TAG = "ROBOT";
 
 static constexpr float PI_F = 3.14159265f;
 static constexpr float DEG2RAD = PI_F / 180.0f;
@@ -70,8 +68,8 @@ void Robot::go(float mm) {
 
         if (!obsHit) return;
 
-        ESP_LOGW(TAG, "Obstacle %.0fmm %+.0fdeg — recul, %.0fmm restants",
-                 (double)gDisplay.obs_dist_mm, (double)gDisplay.obs_angle_deg, (double)remaining);
+        LOG_W("ROBOT", "Obstacle %.0fmm %+.0fdeg — recul, %.0fmm restants",
+              (double)gDisplay.obs_dist_mm, (double)gDisplay.obs_angle_deg, (double)remaining);
 
         _motion.setSpeed(savedSpeed);
         _motion.setAcceleration(savedAccel);
@@ -353,7 +351,7 @@ void Robot::setPosition(float x_mm, float y_mm, float theta_deg) {
     gDisplay.enc_reset_theta_deg = theta_deg;
     gDisplay.enc_reset_pending   = true;
     while (gDisplay.enc_reset_pending) vTaskDelay(1);   // attend que taskEncoders applique
-    ESP_LOGI(TAG, "Position: x=%.0f y=%.0f θ=%.1f°", x_mm, y_mm, theta_deg);
+    LOG_I("ROBOT", "Position: x=%.0f y=%.0f theta=%.1f", x_mm, y_mm, theta_deg);
 }
 
 // ─── Cinématique ──────────────────────────────────────────────────────────────
@@ -480,12 +478,12 @@ void Robot::_waitObstacleClear(float dir_rad) {
     uint32_t start = millis();
     while (_obstacleInDir(dir_rad)) {
         if (millis() - start > OBS_WAIT_MS) {
-            ESP_LOGW(TAG, "Timeout obstacle — reprise quand même");
+            LOG_W("ROBOT", "Timeout obstacle — reprise quand meme");
             return;
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
-    ESP_LOGI(TAG, "Obstacle dégagé — reprise");
+    LOG_I("ROBOT", "Obstacle degage — reprise");
 }
 
 float Robot::_normAngle(float rad) {

@@ -84,7 +84,10 @@ void takeStock(Robot &robot, float x, float y, float angleDeg) {
     robot.setSpeedPct(5, 5);
     if (fabsf(angleDeg - ANGLE_WEST) < 1.0f) {
         robot.goStall(500);
-        robot.setPosition(STOCK_WEST_RECAL_MM, robot.getY(), ANGLE_WEST);
+        robot.setPosition(STOCK_RECAL_MM, robot.getY(), ANGLE_WEST);
+    } else if (fabsf(angleDeg - ANGLE_EAST) < 1.0f) {
+        robot.goStall(500);
+        robot.setPosition(TABLE_WIDTH_MM - STOCK_RECAL_MM, robot.getY(), ANGLE_EAST);
     } else {
         robot.goPID(STOCK_STAGING_MM);
     }
@@ -148,9 +151,25 @@ void runInitBlue(Robot &robot) {
     robot.enableMotors();
     robot.disableObstacle();
     initActuators();
-    robot.go(-20);
-    // TODO: plaquer contre les deux bordures côté bleu (symétrique jaune)
-    robot.setPosition(TABLE_WIDTH_MM / 2, TABLE_HEIGHT_MM / 2, 0);
+
+    robot.setSpeedPct(30, 30);
+
+    // ── Calage X — plaquage contre la bordure Est ──────────────────────────
+    robot.setPosition(TABLE_WIDTH_MM, 0, ANGLE_WEST);
+    robot.goStall(-150);                  // recule (Est) contre la bordure Est
+    robot.setPosition(TABLE_WIDTH_MM - ROBOT_BACK_TO_CENTER_MM, 0, ANGLE_WEST);
+    robot.goPID(TABLE_WIDTH_MM - ROBOT_BACK_TO_CENTER_MM - POI::startBlue.x);  // dégage vers l'Ouest
+
+    // ── Calage Y — plaquage contre la bordure Nord ─────────────────────────
+    robot.turnPID(90.0f);                 // s'oriente vers le Sud (180°→270°)
+    robot.goStall(-150);                  // recule (Nord) contre la bordure Nord
+    robot.setPosition(robot.getX(), ROBOT_BACK_TO_CENTER_MM, ANGLE_SOUTH);
+    robot.goPID(POI::startBlue.y);        // dégage vers le Sud
+
+    // ── Position de départ ─────────────────────────────────────────────────
+    robot.gotoXYenc(POI::startBlue, ANGLE_SOUTH);
+
+    robot.resetSpeed();
 }
 
 // ─── Stratégie jaune ──────────────────────────────────────────────────────────
@@ -191,15 +210,38 @@ void runStrategyYellow(Robot &robot) {
     robot.disableMotors();
 }
 
-// ─── Stratégie bleue ─────────────────────────────────────────────────────────
+// ─── Stratégie bleue — symétrique jaune (axe X = 1500mm) ─────────────────────
 void runStrategyBlue(Robot &robot) {
     robot.enableObstacle();
+    robot.setSpeedPct(80, 80);
 
-    robot.go(500);
-    robot.turn(90);
+    takeStock(robot, POI::stockBlue_01, ANGLE_EAST);
 
-    robot.gotoXY(1000, 500);
-    robot.gotoXY(0, 0, 180);
+    robot.gotoXYenc(2500, 1200, ANGLE_EAST);
+    deposeStock(robot, 2985, 1200, ANGLE_EAST);
+    robot.gotoXYenc(2500, 1200, ANGLE_EAST);
+
+    takeStock(robot, POI::stockBlue_02, ANGLE_EAST);
+
+    robot.gotoXYenc(2500, 1200, ANGLE_EAST);
+    deposeStock(robot, 2965, 1200, ANGLE_EAST);
+    robot.gotoXYenc(2700, 1200, ANGLE_EAST);
+
+    // thermomètre : recalage contre bordure Est, sweep vers l'Ouest
+    robot.setSpeedPct(70, 70);
+    robot.gotoXYenc(2750, 1820, ANGLE_WEST);
+    robot.goPID(-150);                    // recule (Est) vers la bordure Est
+    robot.setSpeedPct(30, 30);
+    robot.goStall(-200, 1000);            // plaque contre la bordure Est
+    robot.setPosition(TABLE_WIDTH_MM - ROBOT_BACK_TO_CENTER_MM, robot.getY(), ANGLE_WEST);
+    deployerBrasDroit();
+    robot.goPID(625);                     // avance (Ouest) 625mm
+    retracteBrasDroit();
+    robot.setSpeedPct(100, 100);
+
+    takeStock(robot, POI::stockBlue_04, ANGLE_NORTH);
+
+    robot.gotoXYenc(2100, 900);
 
     robot.disableMotors();
 }
@@ -214,10 +256,12 @@ void runNearEndYellow(Robot &robot) {
     robot.disableMotors();
 }
 
-// ─── Repli fin de match bleu ──────────────────────────────────────────────────
+// ─── Repli fin de match bleu — symétrique jaune ───────────────────────────────
 void runNearEndBlue(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
-    // TODO: position de sécurité côté bleu
+
+    robot.gotoXYenc(2700, 700, ANGLE_NORTH);
+    deposeStock(robot, 2750, 100, ANGLE_NORTH);
     robot.disableMotors();
 }

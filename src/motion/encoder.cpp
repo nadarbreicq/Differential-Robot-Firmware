@@ -1,7 +1,5 @@
 #include "encoder.h"
-#include "esp_log.h"
-
-static const char *TAG = "ENC";
+#include "../log.h"
 
 bool QuadEncoder::init(int pinA, int pinB, pcnt_unit_t unit) {
     _unit = unit;
@@ -32,8 +30,8 @@ bool QuadEncoder::init(int pinA, int pinB, pcnt_unit_t unit) {
     cfgB.unit           = unit;
     cfgB.channel        = PCNT_CHANNEL_1;
 
-    if (pcnt_unit_config(&cfgA) != ESP_OK) { ESP_LOGE(TAG, "pcnt chan0 unit%d failed", unit); return false; }
-    if (pcnt_unit_config(&cfgB) != ESP_OK) { ESP_LOGE(TAG, "pcnt chan1 unit%d failed", unit); return false; }
+    if (pcnt_unit_config(&cfgA) != ESP_OK) { LOG_E("ENC", "pcnt chan0 unit%d failed", unit); return false; }
+    if (pcnt_unit_config(&cfgB) != ESP_OK) { LOG_E("ENC", "pcnt chan1 unit%d failed", unit); return false; }
 
     // Filtre anti-rebond : rejette impulsions < 1000 cycles APB (~12.5 ns × 1000 = 12.5 µs)
     pcnt_set_filter_value(unit, 1000);
