@@ -1,6 +1,19 @@
 #pragma once
 #include <stdint.h>
 
+// ─── LOGS ────────────────────────────────────────────────────────────────────
+// Les macros LOG_E/W/I/D sont définies dans log.h et wrappent Serial.printf.
+// Les blocs inactifs sont éliminés à la compilation (condition constante).
+//
+//   0  →  aucun log — zéro CPU, zéro UART (compétition)
+//   1  →  [E] erreurs critiques seulement
+//   2  →  [E][W] + obstacles, timeouts
+//   3  →  [E][W][I] + positions, état match  ← défaut debug
+//   4  →  [E][W][I][D] + chaque startGo(), détail PID
+//
+// Usage :  LOG_I("TAG", "x=%.0f y=%.0f", x, y);
+#define LOG_LEVEL  3
+
 // ─── LIDAR LD06 ───────────────────────────────────────────────────────────────
 #define LIDAR_RX_PIN        9
 #define LIDAR_BAUD          230400
@@ -40,10 +53,7 @@
 #define WHEELBASE_MM            145.60f  // distance entre roues motrices (à mesurer)
 
 // ─── DIMENSIONS ROBOT ────────────────────────────────────────────────────────
-#define ROBOT_LENGTH_MM         161.8f  // longueur totale (avant → arrière)
-#define ROBOT_WIDTH_MM          232.0f  // largeur totale
 #define ROBOT_BACK_TO_CENTER_MM  80.9f  // arrière du robot → axe des roues
-#define ROBOT_FRONT_TO_CENTER_MM (ROBOT_LENGTH_MM - ROBOT_BACK_TO_CENTER_MM)
 
 // ─── PRISE DE STOCK ──────────────────────────────────────────────────────────
 #define STOCK_TOOL_OFFSET_MM    210.0f  // distance centre robot → centre stock en position de prise
@@ -52,7 +62,7 @@
 
 // Recalage X par poussée stock contre bordure Ouest :
 // stock plaqué → face Est du stock à X=150mm → centre robot à X=150+135=285mm
-#define STOCK_WEST_RECAL_MM     285.0f  // X centre robot quand stock plaqué contre bordure Ouest
+#define STOCK_RECAL_MM          285.0f  // offset centre robot depuis la bordure quand stock plaqué
 
 // ─── CINÉMATIQUE ─────────────────────────────────────────────────────────────
 #define DEFAULT_SPEED_MMS   2500.0f    // mm/s
@@ -91,14 +101,6 @@
 #define OBS_BACKUP_MM       100.0f    // recul après détection avant attente
 #define OBS_STOP_ACCEL_MMS2 2000.0f   // décélération d'urgence (freinage agressif)
 #define LIDAR_LED_DIST_MM   OBS_DETECT_DIST_MM  // seuil LEDs = seuil détection robot
-
-// ─── PID CORRECTION RECTILIGNE (encodeurs) ───────────────────────────────────
-// Corrige la dérive continue (sol incliné, asymétrie roues).
-// Ne peut pas récupérer d'un choc physique (limité par les pas commandés).
-// Augmenter KP si dérive persistante, baisser si oscillations.
-#define PID_STRAIGHT_KP    10.0f   // gain P : mm/s par mm d'erreur cumulée
-#define PID_STRAIGHT_KD     5.0f   // gain D : amortissement (mm/s par mm/poll)
-#define PID_STRAIGHT_MAX  200.0f   // correction max = 25% à 800 mm/s
 
 // ─── ASSERVISSEMENT EN POSITION — double PID indépendant (roue D / roue G) ────
 //
@@ -143,11 +145,6 @@
 #define TASK_LIDAR_CORE     0
 #define TASK_LIDAR_PRIO     2
 #define TASK_LIDAR_STACK    4096
-
-#define TASK_MOTION_CORE    1
-#define TASK_MOTION_PRIO    4         // plus haute prio sur C1
-#define TASK_MOTION_STACK   4096
-#define MOTION_PERIOD_MS    5         // 200 Hz
 
 #define TASK_STRATEGY_CORE  1
 #define TASK_STRATEGY_PRIO  2
