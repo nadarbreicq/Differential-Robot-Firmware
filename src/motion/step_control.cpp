@@ -166,6 +166,11 @@ void StepControl::setPosition(float x_mm, float y_mm, float theta_deg) {
 
 void StepControl::setSpeed(float mmS)        { _speed = mmS; }
 void StepControl::setAcceleration(float mmS2) { _accel = mmS2; }
+void StepControl::pushAcceleration() {
+    uint32_t a = (uint32_t)(_accel * STEPS_PER_MM);
+    _stepL->setAcceleration(a);
+    _stepR->setAcceleration(a);
+}
 
 // ─── Privé ────────────────────────────────────────────────────────────────────
 

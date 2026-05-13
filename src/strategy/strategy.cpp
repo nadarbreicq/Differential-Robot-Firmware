@@ -111,10 +111,11 @@ void deposeStock(Robot &robot, float x, float y, float angleDeg) {
 
     robot.gotoXYenc(depX, depY, angleDeg);
     libererStock();
+    ouvrirGripper();
     //wait(250);
-    robot.goPID(-100);
+    robot.goPID(-80);
     //wait(250);
-    fermerGripper();
+    //fermerGripper();
 }
 
 void takeStock (Robot &robot, Vec2 poi, float angleDeg) { takeStock (robot, poi.x, poi.y, angleDeg); }
@@ -126,7 +127,7 @@ void runInitYellow(Robot &robot) {
     robot.disableObstacle();
     initActuators();
 
-    robot.setSpeedPct(10, 10); // Change la vitesse et accel pour le calage, afin de limiter les risques de rebonds
+    robot.setSpeedPct(10); // Change la vitesse et accel pour le calage, afin de limiter les risques de rebonds
 
     // ── Calage X — plaquage contre la bordure Ouest ────────────────────────
     robot.setPosition(0, 0, ANGLE_EAST);
@@ -152,7 +153,7 @@ void runInitBlue(Robot &robot) {
     robot.disableObstacle();
     initActuators();
 
-    robot.setSpeedPct(30, 30);
+    robot.setSpeedPct(10);
 
     // ── Calage X — plaquage contre la bordure Est ──────────────────────────
     robot.setPosition(TABLE_WIDTH_MM, 0, ANGLE_WEST);
@@ -167,7 +168,7 @@ void runInitBlue(Robot &robot) {
     robot.goPID(POI::startBlue.y);        // dégage vers le Sud
 
     // ── Position de départ ─────────────────────────────────────────────────
-    robot.gotoXYenc(POI::startBlue, ANGLE_SOUTH);
+    robot.gotoXYenc(POI::startBlue, 257);
 
     robot.resetSpeed();
 }
@@ -191,18 +192,18 @@ void runStrategyYellow(Robot &robot) {
 
     // thermomètre : approche en ligne droite avec détection de blocage
     robot.setSpeedPct(70, 70);
-    robot.gotoXYenc(250,1820,ANGLE_EAST);
-    robot.goPID(-150);
+    robot.gotoXYenc(250,1850,ANGLE_EAST, REAR);
+    //robot.goPID(-150);
     robot.setSpeedPct(30, 30);
-    robot.goStall(-200,1000);
+    robot.goStall(-350);
     robot.setPosition(ROBOT_BACK_TO_CENTER_MM, robot.getY(), ANGLE_EAST);   // X calé
     deployerBrasDroit();
     robot.goPID(625);
     retracteBrasDroit();
     //robot.turnPID(90);
-    robot.setSpeedPct(100, 100);
+    robot.setSpeedPct(60);
 
-    takeStock (robot, POI::stockYellow_04, ANGLE_NORTH);
+    //takeStock (robot, POI::stockYellow_04, ANGLE_NORTH);
 
 
     robot.gotoXYenc(900,900);
@@ -229,17 +230,17 @@ void runStrategyBlue(Robot &robot) {
 
     // thermomètre : recalage contre bordure Est, sweep vers l'Ouest
     robot.setSpeedPct(70, 70);
-    robot.gotoXYenc(2750, 1820, ANGLE_WEST);
-    robot.goPID(-150);                    // recule (Est) vers la bordure Est
+    robot.gotoXYenc(2750, 1850, ANGLE_WEST, REAR);
+    //robot.goPID(-150);                    // recule (Est) vers la bordure Est
     robot.setSpeedPct(30, 30);
-    robot.goStall(-200, 1000);            // plaque contre la bordure Est
+    robot.goStall(-350);            // plaque contre la bordure Est
     robot.setPosition(TABLE_WIDTH_MM - ROBOT_BACK_TO_CENTER_MM, robot.getY(), ANGLE_WEST);
-    deployerBrasDroit();
+    deployerBrasGauche();
     robot.goPID(625);                     // avance (Ouest) 625mm
-    retracteBrasDroit();
-    robot.setSpeedPct(100, 100);
+    retracteBrasGauche();
+    robot.setSpeedPct(60);
 
-    takeStock(robot, POI::stockBlue_04, ANGLE_NORTH);
+    //takeStock(robot, POI::stockBlue_04, ANGLE_NORTH);
 
     robot.gotoXYenc(2100, 900);
 
@@ -250,6 +251,7 @@ void runStrategyBlue(Robot &robot) {
 void runNearEndYellow(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
+    robot.setSpeedPct(70, 70);
 
     robot.gotoXYenc(300,700,ANGLE_NORTH);
     deposeStock(robot,250,100,ANGLE_NORTH);
@@ -260,6 +262,7 @@ void runNearEndYellow(Robot &robot) {
 void runNearEndBlue(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
+    robot.setSpeedPct(70, 70);
 
     robot.gotoXYenc(2700, 700, ANGLE_NORTH);
     deposeStock(robot, 2750, 100, ANGLE_NORTH);

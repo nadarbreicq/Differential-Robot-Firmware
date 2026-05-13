@@ -72,7 +72,7 @@ void ouvrirGripper() {
 }
 
 void libererStock() {
-    servoGripper.moveToPercent(35, 10);
+    servoGripper.moveToPercent(10, 10);
 }
 
 void fermerGripper() {

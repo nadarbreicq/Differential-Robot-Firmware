@@ -140,14 +140,21 @@ bool Robot::goStall(float mm, uint32_t timeoutMs) {
 
 void Robot::_runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float stopMm) {
     _motion.setAcceleration(accel);
+    _motion.pushAcceleration();   // applique immédiatement sur les steppers
 
     float iL = 0, iR = 0;
     float prevEL = (float)(tL - _encLeft->getCount())  * MM_PER_COUNT;
     float prevER = (float)(tR - _encRight->getCount()) * MM_PER_COUNT;
     const float dt = OBS_POLL_MS / 1000.0f;
+    // Rampe logicielle : démarre à ENC_P1_MIN_SPD et monte à accel*dt par cycle.
+    // Garantit une accélération douce quel que soit l'état du stepper.
+    float speedCap = ENC_P1_MIN_SPD;
 
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
+
+        // Rampe du cap : monte de accel*dt par cycle jusqu'à speed
+        speedCap = fminf(speedCap + accel * dt, speed);
 
         float eL  = (float)(tL - _encLeft->getCount())  * MM_PER_COUNT;
         float eR  = (float)(tR - _encRight->getCount()) * MM_PER_COUNT;
@@ -156,7 +163,7 @@ void Robot::_runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float
         gDisplay.nav_dist_mm   = avg;
         gDisplay.nav_delta_deg = eL - eR;
 
-        if (avg <= stopMm) { _motion.stop(); break; }
+        if (avg <= stopMm) { _motion.softStop(); break; }
 
         // PID roue gauche
         iL = fmaxf(-ENC_P1_I_MAX, fminf(iL + ENC_P1_KI * eL * dt, ENC_P1_I_MAX));
@@ -169,11 +176,20 @@ void Robot::_runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float
         prevEL = eL;
         prevER = eR;
 
-        outL = fmaxf(-speed, fminf(outL, speed));
-        outR = fmaxf(-speed, fminf(outR, speed));
+        // Profil de freinage : cible v=0 à d=stopMm (pas à d=0)
+        // → robot à ~ENC_P1_MIN_SPD quand stop() est appelé, stop() doux
+        float dL = fmaxf(0.0f, fabsf(eL) - stopMm);
+        float dR = fmaxf(0.0f, fabsf(eR) - stopMm);
+        float brakingL = sqrtf(2.0f * accel * dL);
+        float brakingR = sqrtf(2.0f * accel * dR);
+        float capL = fminf(brakingL, speedCap);
+        float capR = fminf(brakingR, speedCap);
 
-        if (fabsf(outL) < ENC_P1_MIN_SPD) outL = copysignf(ENC_P1_MIN_SPD, outL);
-        if (fabsf(outR) < ENC_P1_MIN_SPD) outR = copysignf(ENC_P1_MIN_SPD, outR);
+        outL = fmaxf(-capL, fminf(outL, capL));
+        outR = fmaxf(-capR, fminf(outR, capR));
+
+        if (fabsf(outL) < ENC_P1_MIN_SPD) outL = copysignf(ENC_P1_MIN_SPD, eL);
+        if (fabsf(outR) < ENC_P1_MIN_SPD) outR = copysignf(ENC_P1_MIN_SPD, eR);
 
         _motion.setMotorVelocities(outL, outR);
 
@@ -183,10 +199,13 @@ void Robot::_runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float
             _motion.softStop(OBS_STOP_ACCEL_MMS2);
             gDisplay.robot_state = RobotState::OBSTACLE;
             _waitObstacleClear(_motion.getTheta());
-            // Réinitialise le PID pour éviter un spike de dérivée à la reprise
+            // Reset PID + rampe de reprise depuis vitesse mini
             iL = iR = 0;
             prevEL = (float)(tL - _encLeft->getCount())  * MM_PER_COUNT;
             prevER = (float)(tR - _encRight->getCount()) * MM_PER_COUNT;
+            _motion.setAcceleration(accel);
+            _motion.pushAcceleration();
+            speedCap = ENC_P1_MIN_SPD;   // repart doucement, rampe via accel*dt
             gDisplay.robot_state = RobotState::GOTO;
             continue;   // reprend vers la même cible tL/tR
         }
@@ -255,7 +274,7 @@ void Robot::gotoXYenc(float tx, float ty) {
     gotoXYenc(tx, ty, NAN);
 }
 
-void Robot::gotoXYenc(float tx, float ty, float arrival_deg) {
+void Robot::gotoXYenc(float tx, float ty, float arrival_deg, bool backward) {
     gDisplay.robot_state = RobotState::GOTO;
 
     float savedSpeed = _motion.getSpeed();
@@ -270,7 +289,7 @@ void Robot::gotoXYenc(float tx, float ty, float arrival_deg) {
     if (dist > 1.0f) {
         // ── 1. Turn vers la cible ────────────────────────────────────────
         float aerr    = _normAngle(atan2f(-dy, dx) - gDisplay.enc_pose_theta_rad);
-        bool  goBack  = fabsf(aerr) > PI_F * 0.5f;   // >90° → reculer plus court
+        bool  goBack  = backward || fabsf(aerr) > PI_F * 0.5f;   // forcé ou >90°
         float turnErr = goBack ? _normAngle(aerr + (aerr >= 0 ? -PI_F : PI_F)) : aerr;
 
         if (fabsf(turnErr) > 0.05f)   // < 3° : pas de pré-alignement

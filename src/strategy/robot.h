@@ -5,6 +5,10 @@
 #include "../config.h"
 #include "poi.h"
 
+// Direction de déplacement pour gotoXYenc
+constexpr bool FORWARD = false;
+constexpr bool REAR    = true;
+
 // Interface haut niveau du robot.
 // Toutes les méthodes sont BLOQUANTES : elles rendent la main quand le mouvement
 // est terminé (ou interrompu par un obstacle).
@@ -25,9 +29,9 @@ public:
     // Navigation odométrie encodeurs — double PID position
     void turnPID(float deg);
     void gotoXYenc(float x_mm, float y_mm);
-    void gotoXYenc(float x_mm, float y_mm, float arrival_deg);
-    void gotoXYenc(Vec2 poi)                    { gotoXYenc(poi.x, poi.y); }
-    void gotoXYenc(Vec2 poi, float arrival_deg) { gotoXYenc(poi.x, poi.y, arrival_deg); }
+    void gotoXYenc(float x_mm, float y_mm, float arrival_deg, bool backward = false);
+    void gotoXYenc(Vec2 poi)                                        { gotoXYenc(poi.x, poi.y); }
+    void gotoXYenc(Vec2 poi, float arrival_deg, bool backward = false) { gotoXYenc(poi.x, poi.y, arrival_deg, backward); }
     void setEncoders(QuadEncoder *l, QuadEncoder *r) { _encLeft = l; _encRight = r; }
 
     // ── Pose ─────────────────────────────────────────────────────────────────

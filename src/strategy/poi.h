@@ -39,15 +39,15 @@ namespace POI{
 
     // ------------------------------------------
     //  Zone de ramassage (Attention à l'orientation)
-    const Vec2 stockYellow_01 = Vec2(175,800);
-    const Vec2 stockYellow_02 = Vec2(175,1600);
+    const Vec2 stockYellow_01 = Vec2(175,790);
+    const Vec2 stockYellow_02 = Vec2(175,1590);
     const Vec2 stockYellow_03 = Vec2(1100,1825);
     const Vec2 stockYellow_04 = Vec2(1150,1200);
 
     const Vec2 stockNinjaYellow = Vec2(800,325);
 
-    const Vec2 stockBlue_01 = Vec2(2825,800);
-    const Vec2 stockBlue_02 = Vec2(2825,1600);
+    const Vec2 stockBlue_01 = Vec2(2825,790);
+    const Vec2 stockBlue_02 = Vec2(2825,1590);
     const Vec2 stockBlue_03 = Vec2(1900,1825);
     const Vec2 stockBlue_04 = Vec2(1850,1200);
 

@@ -39,6 +39,7 @@ public:
     // ── Cinématique ───────────────────────────────────────────────────────────
     void  setSpeed(float mmS);
     void  setAcceleration(float mmS2);
+    void  pushAcceleration();   // applique _accel sur les steppers (après softStop)
     float getSpeed()        const { return _speed; }
     float getAcceleration() const { return _accel; }
 

@@ -70,10 +70,10 @@
 #define STOCK_RECAL_MM          285.0f  // offset centre robot depuis la bordure quand stock plaqué
 
 // ─── CINÉMATIQUE ─────────────────────────────────────────────────────────────
-#define DEFAULT_SPEED_MMS   2500.0f    // mm/s
-#define DEFAULT_ACCEL_MMS2  2500.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
-#define TURN_SPEED_MMS      2500.0f
-#define TURN_ACCEL_MMS2     2500.0f
+#define DEFAULT_SPEED_MMS   1500.0f    // mm/s
+#define DEFAULT_ACCEL_MMS2  1000.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
+#define TURN_SPEED_MMS      1500.0f
+#define TURN_ACCEL_MMS2     1000.0f
 
 // ─── TABLE DE JEU ────────────────────────────────────────────────────────────
 #define TABLE_WIDTH_MM      3000.0f   // axe X (horizontal)
@@ -125,12 +125,12 @@
 //    Undershoot / calage  → augmenter KI ou MIN_SPD
 //    Oscillations finales → augmenter KD
 //
-#define ENC_P1_KP         2.0f    // proportionnel : mm/s par mm d'erreur position
+#define ENC_P1_KP         1.5f    // proportionnel : mm/s par mm d'erreur position
 #define ENC_P1_KI         0.01f    // intégral      : mm/s par (mm · s) — anti-trainage
 #define ENC_P1_KD         0.2f   // dérivé        : amortissement en fin de course
-#define ENC_P1_I_MAX     50.0f    // anti-windup   : saturation intégrale (mm/s)
+#define ENC_P1_I_MAX     100.0f    // anti-windup   : saturation intégrale (mm/s)
 #define ENC_P1_STOP_MM    5.0f    // seuil d'arrêt translation : erreur avg < valeur → stop (mm)
-#define ENC_P1_STOP_DEG   2.0f    // seuil d'arrêt rotation    : erreur avg < valeur → stop (°)
+#define ENC_P1_STOP_DEG   1.0f    // seuil d'arrêt rotation    : erreur avg < valeur → stop (°)
 #define ENC_P1_MIN_SPD    8.0f    // vitesse min   : en dessous → stopMove() (mm/s)
 
 // ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────

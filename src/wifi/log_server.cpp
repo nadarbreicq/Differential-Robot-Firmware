@@ -40,8 +40,9 @@ void LogServer::begin() {
     _logQueue = xQueueCreate(64, sizeof(LogEntry));
     _cmdQueue = xQueueCreate(8,  sizeof(ServoCmd));
 
-    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-    Serial.printf("[I][WIFI] AP: %s  IP: %s\n", WIFI_AP_SSID,
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);   // puissance TX maximale
+    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL);
+    Serial.printf("[I][WIFI] AP: %s  ch=%d  IP: %s\n", WIFI_AP_SSID, WIFI_AP_CHANNEL,
                   WiFi.softAPIP().toString().c_str());
 
     if (!LittleFS.begin(false))

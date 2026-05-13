@@ -4,7 +4,26 @@
       "Bash(pio run *)",
       "Bash(~/.platformio/penv/bin/pio run *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(grep -n \"^\\\\`\\\\`\\\\`$\" /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware/doc/context_llm.md)",
+      "Bash(awk '{print $2}')",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware diff)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware log --oneline -5)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware add src/config.h doc/context_llm.md src/log.h)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware commit -m ' *)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware diff --stat)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware diff src/main.cpp src/motion/encoder.cpp src/motion/step_control.cpp src/strategy/robot.cpp src/strategy/strategy.cpp)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware add src/main.cpp src/motion/encoder.cpp src/motion/step_control.cpp src/strategy/robot.cpp src/strategy/strategy.cpp)",
+      "Bash(convert --version)",
+      "Bash(ffmpeg -version)",
+      "Bash(python3 -c \"from PIL import Image; print\\('PIL OK'\\)\")",
+      "Bash(find /tmp -name \"*.png\" -o -name \"*.jpg\" -o -name \"*.jpeg\" -o -name \"*.webp\" 2>/dev/null | head -20)",
+      "Read(//tmp/**)",
+      "Bash(find /home/barbatronic -name \"*.png\" -o -name \"*.jpg\" -o -name \"*.jpeg\" -o -name \"*.webp\" 2>/dev/null | grep -v \".cache\\\\|.local/share/Trash\" | head -20)",
+      "Read(//home/barbatronic/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware log --oneline -3)",
+      "Bash(git -C /home/barbatronic/Documents/GitHub/Differential-Robot-Firmware add .gitignore platformio.ini src/config.h src/log.h src/main.cpp src/credentials.h.example src/wifi/ data/)"
     ]
   }
 }
