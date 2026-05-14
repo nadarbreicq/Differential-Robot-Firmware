@@ -59,24 +59,28 @@ void retracteBrasGauche(int speed) {
     servoBrasGauche.moveToPercent(50, speed);
 }
 
-void deployerLifter() {
-    servoLifter.moveToPercent(90, 80);
+void deployerLifter(int speed) {
+    servoLifter.moveToPercent(90, speed);
 }
 
-void retracterLifter() {
-    servoLifter.moveToPercent(14, 80);
+void retracterLifter(int speed) {
+    servoLifter.moveToPercent(14, speed);
 }
 
-void ouvrirGripper() {
-    servoGripper.moveToPercent(35, 80);
+void ouvrirGripper(int speed) {
+    servoGripper.moveToPercent(35, speed);
 }
 
-void libererStock() {
-    servoGripper.moveToPercent(10, 10);
+void libererStock(int speed) {
+    servoGripper.moveToPercent(10, speed);
 }
 
-void fermerGripper() {
-    servoGripper.moveToPercent(0, 80);
+void fermerGripper(int speed) {
+    servoGripper.moveToPercent(0, speed);
+}
+
+void fastFermerGripper(){
+    servoGripper.setAngle(0);
 }
 
 void sequencePrise() {

@@ -188,6 +188,7 @@ void runStrategyYellow(Robot &robot) {
 
     robot.gotoXYenc(500, 1200, ANGLE_WEST);
     deposeStock(robot, 35, 1200, ANGLE_WEST);
+    fastFermerGripper();
     robot.gotoXYenc(300, 1200, ANGLE_WEST);
 
     // thermomètre : approche en ligne droite avec détection de blocage
@@ -205,8 +206,7 @@ void runStrategyYellow(Robot &robot) {
 
     //takeStock (robot, POI::stockYellow_04, ANGLE_NORTH);
 
-
-    robot.gotoXYenc(900,900);
+    robot.gotoXYenc(900,650,ANGLE_WEST);
 
     robot.disableMotors();
 }
@@ -226,6 +226,7 @@ void runStrategyBlue(Robot &robot) {
 
     robot.gotoXYenc(2500, 1200, ANGLE_EAST);
     deposeStock(robot, 2965, 1200, ANGLE_EAST);
+    fastFermerGripper();
     robot.gotoXYenc(2700, 1200, ANGLE_EAST);
 
     // thermomètre : recalage contre bordure Est, sweep vers l'Ouest
@@ -242,7 +243,7 @@ void runStrategyBlue(Robot &robot) {
 
     //takeStock(robot, POI::stockBlue_04, ANGLE_NORTH);
 
-    robot.gotoXYenc(2100, 900);
+    robot.gotoXYenc(3000-900, 650, ANGLE_EAST);
 
     robot.disableMotors();
 }
@@ -251,10 +252,14 @@ void runStrategyBlue(Robot &robot) {
 void runNearEndYellow(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
-    robot.setSpeedPct(70, 70);
 
-    robot.gotoXYenc(300,700,ANGLE_NORTH);
-    deposeStock(robot,250,100,ANGLE_NORTH);
+    robot.waitMatchTime(93000);
+    robot.setSpeedPct(130);
+
+    robot.gotoXYenc(400,650,ANGLE_NORTH);
+    robot.gotoXYenc(400,100);
+    //deposeStock(robot,250,100,ANGLE_NORTH);
+    libererStock();
     robot.disableMotors();
 }
 
@@ -262,9 +267,13 @@ void runNearEndYellow(Robot &robot) {
 void runNearEndBlue(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
-    robot.setSpeedPct(70, 70);
+    
+    robot.waitMatchTime(93000);
+    robot.setSpeedPct(130);
 
-    robot.gotoXYenc(2700, 700, ANGLE_NORTH);
-    deposeStock(robot, 2750, 100, ANGLE_NORTH);
+    robot.gotoXYenc(3000-400,650,ANGLE_NORTH);
+    robot.gotoXYenc(3000-400,100);
+    //deposeStock(robot, 2750, 100, ANGLE_NORTH);
+    libererStock();
     robot.disableMotors();
 }

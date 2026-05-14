@@ -24,6 +24,10 @@ uint32_t Robot::matchElapsed() const {
 bool Robot::isEndgame()   const { return matchElapsed() >= MATCH_ENDGAME_MS;  }
 bool Robot::isMatchOver() const { return matchElapsed() >= MATCH_DURATION_MS; }
 
+void Robot::waitMatchTime(uint32_t target_ms) {
+    while (!isMatchOver() && matchElapsed() < target_ms)
+        vTaskDelay(pdMS_TO_TICKS(10));
+}
 
 // ─── Déplacements ─────────────────────────────────────────────────────────────
 
@@ -89,41 +93,54 @@ void Robot::go(float mm) {
 // varier pendant STALL_POLLS polls consécutifs → robot bloqué → stop.
 // Retourne true si stall détecté, false si distance atteinte ou timeout.
 
-bool Robot::goStall(float mm, uint32_t timeoutMs) {
+bool Robot::goStall(float mm, uint32_t timeoutMs, uint32_t stallConfirmMs) {
     if (fabsf(mm) < 0.5f) return false;
 
     _motion.startGo(mm);
 
-    int32_t prevL = _encLeft  ? _encLeft->getCount()  : 0;
-    int32_t prevR = _encRight ? _encRight->getCount() : 0;
-    uint8_t  stallCount = 0;
-    uint32_t start      = millis();
+    int32_t  prevL         = _encLeft  ? _encLeft->getCount()  : 0;
+    int32_t  prevR         = _encRight ? _encRight->getCount() : 0;
+    float    traveled      = 0.0f;      // distance encodeur parcourue depuis le début
+    uint32_t stallSince    = 0;         // début de la fenêtre de non-mouvement (0 = en mouvement)
+    uint32_t timeoutStart  = 0;         // 0 = timeout pas encore activé
+
+    constexpr int32_t kThresh = (int32_t)(0.1f / MM_PER_COUNT) + 1;
 
     while (_motion.isMoving()) {
         vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
         _motion.syncPose();
 
-        int32_t curL  = _encLeft  ? _encLeft->getCount()  : prevL;
-        int32_t curR  = _encRight ? _encRight->getCount() : prevR;
-        int32_t dL    = abs(curL - prevL);
-        int32_t dR    = abs(curR - prevR);
+        int32_t curL = _encLeft  ? _encLeft->getCount()  : prevL;
+        int32_t curR = _encRight ? _encRight->getCount() : prevR;
+        int32_t dL   = abs(curL - prevL);
+        int32_t dR   = abs(curR - prevR);
         prevL = curL;
         prevR = curR;
 
-        // Seuil : < 0.1 mm par poll sur les deux roues = pas de mouvement
-        constexpr int32_t kThresh = (int32_t)(0.1f / MM_PER_COUNT) + 1;
+        uint32_t now = millis();
 
+        // Accumule la distance parcourue
+        traveled += (float)(dL + dR) * 0.5f * MM_PER_COUNT;
+
+        // Le timeout démarre uniquement quand la distance attendue est atteinte
+        // (le robot est "en position" et poursuit contre un obstacle)
+        if (timeoutStart == 0 && traveled >= fabsf(mm))
+            timeoutStart = now;
+
+        // Détection stall : active dès le début (mur plus proche que prévu)
         if (dL < kThresh && dR < kThresh) {
-            if (++stallCount >= 3) {
+            if (stallSince == 0) stallSince = now;
+            if (now - stallSince >= stallConfirmMs) {
                 _motion.stop();
                 _motion.syncPose();
                 return true;
             }
         } else {
-            stallCount = 0;
+            stallSince = 0;
         }
 
-        if (millis() - start > timeoutMs) {
+        // Timeout : seulement après avoir atteint la position normale
+        if (timeoutStart != 0 && now - timeoutStart >= timeoutMs) {
             _motion.stop();
             _motion.syncPose();
             return false;
@@ -147,8 +164,10 @@ void Robot::_runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float
     float prevER = (float)(tR - _encRight->getCount()) * MM_PER_COUNT;
     const float dt = OBS_POLL_MS / 1000.0f;
     // Rampe logicielle : démarre à ENC_P1_MIN_SPD et monte à accel*dt par cycle.
-    // Garantit une accélération douce quel que soit l'état du stepper.
     float speedCap = ENC_P1_MIN_SPD;
+    // Direction de déplacement : theta si avance, theta+PI si recule
+    // (go() fait pareil, _runWheelPID doit aussi corriger le sens arrière)
+    const float moveDir = _motion.getTheta() + ((prevEL < 0) ? PI_F : 0.0f);
 
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
@@ -195,10 +214,10 @@ void Robot::_runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float
 
         if (isMatchOver())                { _motion.stop(); disableMotors(); gDisplay.robot_state = RobotState::DONE; return; }
         if (!_nearEndMode && isEndgame()) { _motion.softStop(OBS_STOP_ACCEL_MMS2); break; }
-        if (_obstacleEn && _obstacleInDir(_motion.getTheta())) {
+        if (_obstacleEn && _obstacleInDir(moveDir)) {
             _motion.softStop(OBS_STOP_ACCEL_MMS2);
             gDisplay.robot_state = RobotState::OBSTACLE;
-            _waitObstacleClear(_motion.getTheta());
+            _waitObstacleClear(moveDir);
             // Reset PID + rampe de reprise depuis vitesse mini
             iL = iR = 0;
             prevEL = (float)(tL - _encLeft->getCount())  * MM_PER_COUNT;

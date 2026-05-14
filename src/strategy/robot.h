@@ -18,7 +18,10 @@ public:
 
     // ── Déplacements ─────────────────────────────────────────────────────────
     void go(float mm);                              // relatif, step-based
-    bool goStall(float mm, uint32_t timeoutMs = 3000); // go avec détection blocage encodeurs
+    // go avec détection blocage encodeurs.
+    // timeoutMs   : durée max totale avant abandon (sécurité)
+    // stallConfirmMs : durée min de non-mouvement pour valider le stall (anti-frottement)
+    bool goStall(float mm, uint32_t timeoutMs = 3000, uint32_t stallConfirmMs = STALL_CONFIRM_MS);
     void goPID(float mm);                           // relatif, asservi encodeurs
     void turn(float deg);                           // relatif, positif = gauche
     void gotoXY(float x_mm, float y_mm);
@@ -65,6 +68,9 @@ public:
     uint32_t matchElapsed() const;
     bool     isEndgame()    const;
     bool     isMatchOver()  const;
+    // Bloque jusqu'à ce que le chrono de match atteigne target_ms (ou fin de match).
+    // Usage dans runNearEndXxx : robot.waitMatchTime(95000); // attend la 95e seconde
+    void     waitMatchTime(uint32_t target_ms);
 
     // ── Accesseurs état ──────────────────────────────────────────────────────
     float getX()        const { return _motion.getX(); }
