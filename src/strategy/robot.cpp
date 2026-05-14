@@ -96,13 +96,17 @@ void Robot::go(float mm) {
 bool Robot::goStall(float mm, uint32_t timeoutMs, uint32_t stallConfirmMs) {
     if (fabsf(mm) < 0.5f) return false;
 
+    // Direction de déplacement (même logique que go() pour l'obstacle)
+    const float moveDir = _motion.getTheta() + ((mm < 0) ? PI_F : 0.0f);
+    const float sign    = (mm >= 0) ? 1.0f : -1.0f;
+
     _motion.startGo(mm);
 
-    int32_t  prevL         = _encLeft  ? _encLeft->getCount()  : 0;
-    int32_t  prevR         = _encRight ? _encRight->getCount() : 0;
-    float    traveled      = 0.0f;      // distance encodeur parcourue depuis le début
-    uint32_t stallSince    = 0;         // début de la fenêtre de non-mouvement (0 = en mouvement)
-    uint32_t timeoutStart  = 0;         // 0 = timeout pas encore activé
+    int32_t  prevL        = _encLeft  ? _encLeft->getCount()  : 0;
+    int32_t  prevR        = _encRight ? _encRight->getCount() : 0;
+    float    traveled     = 0.0f;
+    uint32_t stallSince   = 0;
+    uint32_t timeoutStart = 0;
 
     constexpr int32_t kThresh = (int32_t)(0.1f / MM_PER_COUNT) + 1;
 
@@ -118,16 +122,27 @@ bool Robot::goStall(float mm, uint32_t timeoutMs, uint32_t stallConfirmMs) {
         prevR = curR;
 
         uint32_t now = millis();
-
-        // Accumule la distance parcourue
         traveled += (float)(dL + dR) * 0.5f * MM_PER_COUNT;
 
-        // Le timeout démarre uniquement quand la distance attendue est atteinte
-        // (le robot est "en position" et poursuit contre un obstacle)
         if (timeoutStart == 0 && traveled >= fabsf(mm))
             timeoutStart = now;
 
-        // Détection stall : active dès le début (mur plus proche que prévu)
+        // Détection obstacle dans le sens du mouvement (adversaire, pas le mur cible)
+        // Le mur cible est à <LIDAR_BODY_DIST_MM quand plaqué → jamais déclenché
+        if (_obstacleEn && _obstacleInDir(moveDir)) {
+            _motion.softStop(OBS_STOP_ACCEL_MMS2);
+            gDisplay.robot_state = RobotState::OBSTACLE;
+            _waitObstacleClear(moveDir);
+            stallSince = 0;
+            float remaining = fabsf(mm) - traveled;
+            if (remaining > 0.5f) _motion.startGo(sign * remaining);
+            prevL = _encLeft  ? _encLeft->getCount()  : prevL;
+            prevR = _encRight ? _encRight->getCount() : prevR;
+            gDisplay.robot_state = RobotState::MOVING;
+            continue;
+        }
+
+        // Détection stall : active dès le début (mur plus proche que prévu aussi)
         if (dL < kThresh && dR < kThresh) {
             if (stallSince == 0) stallSince = now;
             if (now - stallSince >= stallConfirmMs) {
