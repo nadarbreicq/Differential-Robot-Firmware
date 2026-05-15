@@ -187,14 +187,14 @@ void runStrategyYellow(Robot &robot) {
     takeStock (robot, POI::stockYellow_02, ANGLE_WEST);
 
     robot.gotoXYenc(500, 1200);
-    deposeStock(robot, 35, 1200, ANGLE_WEST);
+    deposeStock(robot, 45, 1200, ANGLE_WEST);
     fastFermerGripper();
     robot.goPID(-150);
     //robot.gotoXYenc(300, 1200);
 
     // thermomètre : approche en ligne droite avec détection de blocage
     robot.setSpeedPct(80);
-    robot.gotoXYenc(250,1850,ANGLE_EAST, REAR);
+    robot.gotoXYenc(250,1825,ANGLE_EAST, REAR);
     //robot.goPID(-150);
     robot.setSpeedPct(40, 40);
     robot.goStall(-350);
@@ -221,20 +221,20 @@ void runStrategyBlue(Robot &robot) {
     takeStock(robot, POI::stockBlue_01, ANGLE_EAST);
 
     robot.gotoXYenc(3000-400, 1200);
-    deposeStock(robot, 2985, 1200, ANGLE_EAST);
+    deposeStock(robot, 3000-15, 1200, ANGLE_EAST);
     //robot.gotoXYenc(3000-500, 1200);
 
     takeStock(robot, POI::stockBlue_02, ANGLE_EAST);
 
     robot.gotoXYenc(2500, 1200);
-    deposeStock(robot, 2965, 1200, ANGLE_EAST);
+    deposeStock(robot, 3000-45, 1200, ANGLE_EAST);
     fastFermerGripper();
     robot.goPID(-150);
     //robot.gotoXYenc(2700, 1200);
 
     // thermomètre : recalage contre bordure Est, sweep vers l'Ouest
     robot.setSpeedPct(80);
-    robot.gotoXYenc(3000-250, 1850, ANGLE_WEST, REAR);
+    robot.gotoXYenc(3000-250, 1825, ANGLE_WEST, REAR);
     //robot.goPID(-150);                    // recule (Est) vers la bordure Est
     robot.setSpeedPct(30, 30);
     robot.goStall(-350);            // plaque contre la bordure Est
