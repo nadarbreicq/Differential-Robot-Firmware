@@ -260,8 +260,8 @@ void runNearEndYellow(Robot &robot) {
     robot.waitMatchTime(92000);
     robot.setSpeedPct(130);
 
-    robot.gotoXYenc(400,650);
-    robot.gotoXYenc(400,100);
+    robot.gotoXYenc(430,650);
+    robot.gotoXYenc(430,100,ANGLE_NORTH,REAR);
     //deposeStock(robot,250,100,ANGLE_NORTH);
     libererStock();
     robot.disableMotors();
@@ -275,8 +275,8 @@ void runNearEndBlue(Robot &robot) {
     robot.waitMatchTime(92000);
     robot.setSpeedPct(130);
 
-    robot.gotoXYenc(3000-400,650);
-    robot.gotoXYenc(3000-400,100);
+    robot.gotoXYenc(3000-430,650);
+    robot.gotoXYenc(3000-430,100,ANGLE_NORTH,REAR);
     //deposeStock(robot, 2750, 100, ANGLE_NORTH);
     libererStock();
     robot.disableMotors();

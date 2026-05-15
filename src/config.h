@@ -138,6 +138,11 @@
 // Trop court → faux positifs sur frottements. Trop long → réaction lente.
 #define STALL_CONFIRM_MS    150U    // ms consécutives sans avance pour confirmer le stall
 #define STALL_TIMEOUT_MS    2000U   // ms max pour atteindre la cible avant timeout (après dépassement)
+// Seuil de mouvement par poll (20ms) pour distinguer stall du jitter stepper en butée.
+// Trop bas → vibrations moteur réinitialisent stallSince (faux non-stall)
+// Trop haut → faux stall pendant un déplacement lent
+// À 10% speed = 200mm/s → 4mm/poll = ~206 counts → marge large même à 0.5mm
+#define STALL_THRESH_MM     0.5f    // mm/poll en dessous = considéré comme stall
 
 // ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────
 #define MATCH_DURATION_MS  100000UL   // durée totale du match (100 s)

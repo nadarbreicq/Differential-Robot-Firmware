@@ -108,7 +108,7 @@ bool Robot::goStall(float mm, uint32_t timeoutMs, uint32_t stallConfirmMs) {
     uint32_t stallSince   = 0;
     uint32_t timeoutStart = 0;
 
-    constexpr int32_t kThresh = (int32_t)(0.1f / MM_PER_COUNT) + 1;
+    const int32_t kThresh = (int32_t)(STALL_THRESH_MM / MM_PER_COUNT) + 1;
 
     while (_motion.isMoving()) {
         vTaskDelay(pdMS_TO_TICKS(OBS_POLL_MS));
