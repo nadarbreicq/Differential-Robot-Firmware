@@ -192,7 +192,7 @@ void runStrategyYellow(Robot &robot) {
     robot.gotoXYenc(300, 1200, ANGLE_WEST);
 
     // thermomètre : approche en ligne droite avec détection de blocage
-    robot.setSpeedPct(70, 70);
+    robot.setSpeedPct(80, 80);
     robot.gotoXYenc(250,1850,ANGLE_EAST, REAR);
     //robot.goPID(-150);
     robot.setSpeedPct(30, 30);
@@ -205,8 +205,8 @@ void runStrategyYellow(Robot &robot) {
     robot.setSpeedPct(60);
 
     //takeStock (robot, POI::stockYellow_04, ANGLE_NORTH);
-
-    robot.gotoXYenc(900,650,ANGLE_WEST);
+    robot.gotoXYenc(975, 1200, ANGLE_WEST);
+    robot.gotoXYenc(900,650);
 
     robot.disableMotors();
 }
@@ -242,8 +242,8 @@ void runStrategyBlue(Robot &robot) {
     robot.setSpeedPct(60);
 
     //takeStock(robot, POI::stockBlue_04, ANGLE_NORTH);
-
-    robot.gotoXYenc(3000-900, 650, ANGLE_EAST);
+    robot.gotoXYenc(3000-975, 1200, ANGLE_EAST);
+    robot.gotoXYenc(3000-900, 650);
 
     robot.disableMotors();
 }
@@ -253,10 +253,10 @@ void runNearEndYellow(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
 
-    robot.waitMatchTime(93000);
+    robot.waitMatchTime(92000);
     robot.setSpeedPct(130);
 
-    robot.gotoXYenc(400,650,ANGLE_NORTH);
+    robot.gotoXYenc(400,650);
     robot.gotoXYenc(400,100);
     //deposeStock(robot,250,100,ANGLE_NORTH);
     libererStock();
@@ -268,10 +268,10 @@ void runNearEndBlue(Robot &robot) {
     robot.enableMotors();
     robot.enableObstacle();
     
-    robot.waitMatchTime(93000);
+    robot.waitMatchTime(92000);
     robot.setSpeedPct(130);
 
-    robot.gotoXYenc(3000-400,650,ANGLE_NORTH);
+    robot.gotoXYenc(3000-400,650);
     robot.gotoXYenc(3000-400,100);
     //deposeStock(robot, 2750, 100, ANGLE_NORTH);
     libererStock();
