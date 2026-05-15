@@ -62,7 +62,7 @@
 
 // ─── PRISE DE STOCK ──────────────────────────────────────────────────────────
 #define STOCK_TOOL_OFFSET_MM    210.0f  // distance centre robot → centre stock en position de prise
-#define STOCK_STAGING_MM        150.0f  // recul derrière la position de prise avant l'approche finale
+#define STOCK_STAGING_MM        120.0f  // recul derrière la position de prise avant l'approche finale
 #define STOCK_DEPOSE_OFFSET_MM  180.0f  // distance centre robot → centre stock en position de dépose
 
 // Recalage X par poussée stock contre bordure Ouest :
@@ -73,7 +73,7 @@
 #define DEFAULT_SPEED_MMS   2000.0f    // mm/s
 #define DEFAULT_ACCEL_MMS2  1500.0f   // mm/s²  — freinage en 320 mm depuis 800 mm/s
 #define TURN_SPEED_MMS      2000.0f
-#define TURN_ACCEL_MMS2     1500.0f
+#define TURN_ACCEL_MMS2     3000.0f
 
 // ─── TABLE DE JEU ────────────────────────────────────────────────────────────
 #define TABLE_WIDTH_MM      3000.0f   // axe X (horizontal)
@@ -137,10 +137,11 @@
 // Durée minimale de non-mouvement encodeur pour valider un stall.
 // Trop court → faux positifs sur frottements. Trop long → réaction lente.
 #define STALL_CONFIRM_MS    150U    // ms consécutives sans avance pour confirmer le stall
+#define STALL_TIMEOUT_MS    2000U   // ms max pour atteindre la cible avant timeout (après dépassement)
 
 // ─── CHRONO DE MATCH ─────────────────────────────────────────────────────────
 #define MATCH_DURATION_MS  100000UL   // durée totale du match (100 s)
-#define MATCH_ENDGAME_MS    80000UL   // déclenchement repli fin de match (80 s)
+#define MATCH_ENDGAME_MS    85000UL   // déclenchement repli fin de match (85 s)
 
 // ─── ACTIONNEURS I2C ─────────────────────────────────────────────────────────
 #define PCA9685_I2C_ADDR    0x40   // adresse PCA9685 (A0-A5 = GND)

@@ -21,7 +21,7 @@ public:
     // go avec détection blocage encodeurs.
     // timeoutMs   : durée max totale avant abandon (sécurité)
     // stallConfirmMs : durée min de non-mouvement pour valider le stall (anti-frottement)
-    bool goStall(float mm, uint32_t timeoutMs = 3000, uint32_t stallConfirmMs = STALL_CONFIRM_MS);
+    bool goStall(float mm, uint32_t timeoutMs = STALL_TIMEOUT_MS, uint32_t stallConfirmMs = STALL_CONFIRM_MS);
     void goPID(float mm);                           // relatif, asservi encodeurs
     void turn(float deg);                           // relatif, positif = gauche
     void gotoXY(float x_mm, float y_mm);

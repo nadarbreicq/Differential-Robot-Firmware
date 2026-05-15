@@ -84,7 +84,7 @@ void fastFermerGripper(){
 }
 
 void sequencePrise() {
-    ouvrirGripper();
+    ouvrirGripper(100);
     deployerLifter();
     fermerGripper();
 }
