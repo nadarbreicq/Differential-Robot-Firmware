@@ -3,8 +3,14 @@
 
 // ─── WIFI LOG ────────────────────────────────────────────────────────────────
 // 0 = désactivé (compétition — zéro overhead WiFi)
-// 1 = actif — AP "Karibous", interface web sur http://192.168.4.1
+// 1 = actif — interface web disponible
 #define WIFI_LOG_ENABLED    1
+
+// Mode de connexion WiFi :
+// 0 = AP (compétition) — crée le réseau "Karibous", IP fixe 192.168.4.1
+// 1 = STA (développement) — se connecte au réseau domestique, IP par DHCP
+//     → l'IP s'affiche au démarrage sur le moniteur série
+#define WIFI_USE_STA        1
 
 // ─── LOGS ────────────────────────────────────────────────────────────────────
 // Les macros LOG_E/W/I/D sont définies dans log.h et wrappent Serial.printf.

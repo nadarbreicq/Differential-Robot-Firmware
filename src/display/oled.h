@@ -67,6 +67,9 @@ struct DisplayData {
     volatile float      enc_reset_x;
     volatile float      enc_reset_y;
     volatile float      enc_reset_theta_deg;
+
+    // WiFi — IP affichée sur l'écran en pré-match
+    char                wifi_ip[20];   // "192.168.1.42" ou "AP:Karibous"
 };
 
 extern DisplayData gDisplay;

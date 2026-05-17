@@ -6,6 +6,7 @@
 #include <LittleFS.h>
 #include "../credentials.h"
 #include "../config.h"
+#include "../display/oled.h"
 
 LogServer logServer;
 
@@ -40,10 +41,34 @@ void LogServer::begin() {
     _logQueue = xQueueCreate(64, sizeof(LogEntry));
     _cmdQueue = xQueueCreate(8,  sizeof(ServoCmd));
 
-    WiFi.setTxPower(WIFI_POWER_19_5dBm);   // puissance TX maximale
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+
+#if WIFI_USE_STA
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASS);
+    Serial.printf("[I][WIFI] Connexion à %s ...\n", WIFI_STA_SSID);
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000)
+        vTaskDelay(pdMS_TO_TICKS(500));
+    if (WiFi.status() == WL_CONNECTED) {
+        String ip = WiFi.localIP().toString();
+        Serial.printf("[I][WIFI] Connecté — http://%s\n", ip.c_str());
+        strncpy(gDisplay.wifi_ip, ip.c_str(), sizeof(gDisplay.wifi_ip) - 1);
+    } else {
+        Serial.println("[W][WIFI] STA échoué — repli en mode AP");
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL);
+        Serial.printf("[I][WIFI] AP: %s  IP: %s\n", WIFI_AP_SSID,
+                      WiFi.softAPIP().toString().c_str());
+        strncpy(gDisplay.wifi_ip, "AP:" WIFI_AP_SSID, sizeof(gDisplay.wifi_ip) - 1);
+    }
+#else
+    WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL);
     Serial.printf("[I][WIFI] AP: %s  ch=%d  IP: %s\n", WIFI_AP_SSID, WIFI_AP_CHANNEL,
                   WiFi.softAPIP().toString().c_str());
+    strncpy(gDisplay.wifi_ip, "AP:" WIFI_AP_SSID, sizeof(gDisplay.wifi_ip) - 1);
+#endif
 
     if (!LittleFS.begin(false))
         Serial.println("[E][WIFI] LittleFS mount failed — lance 'pio run -t uploadfs'");
