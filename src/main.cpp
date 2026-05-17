@@ -90,17 +90,28 @@ static void taskLidar(void *) {
     }
 }
 
+// ─── Commandes UI → Strategy ─────────────────────────────────────────────────
+
+#include "state_cmd.h"
+
+QueueHandle_t gStateCmd = nullptr;
+
+void sendStateCmd(StateCmd cmd) {
+    if (gStateCmd) xQueueSend(gStateCmd, &cmd, 0);
+}
+
 // ─── Tâche Strategy (Core 1, prio 2) ─────────────────────────────────────────
 
 static void taskStrategy(void *) {
-    // ── Phase pré-match ───────────────────────────────────────────────────────
-    robot.disableMotors();   // moteurs libres pendant le positionnement
-    // Inverser A/B pour changer le sens de comptage
+    // Encodeurs initialisés une seule fois (PCNT ne supporte pas le re-init)
     encRight.init(ENC_RIGHT_INVERT ? ENC_RIGHT_B_PIN : ENC_RIGHT_A_PIN,
                   ENC_RIGHT_INVERT ? ENC_RIGHT_A_PIN : ENC_RIGHT_B_PIN, PCNT_UNIT_2);
     encLeft.init( ENC_LEFT_INVERT  ? ENC_LEFT_B_PIN  : ENC_LEFT_A_PIN,
                   ENC_LEFT_INVERT  ? ENC_LEFT_A_PIN  : ENC_LEFT_B_PIN,  PCNT_UNIT_3);
     robot.setEncoders(&encLeft, &encRight);
+
+restart:   // point de retour pour GOTO_WAIT_INIT / RESTART_MATCH
+    robot.disableMotors();
     gDisplay.team = teamSwitch();
     ledsSetTeam(gDisplay.team);
     gDisplay.robot_state = RobotState::WAIT_INIT;
@@ -111,6 +122,21 @@ static void taskStrategy(void *) {
 
     // Condition de sortie : tirette retirée après init + mise en place
     while (phase != Phase::WAIT_TIRETTE_OUT || !tirette()) {
+
+        // Commandes UI
+        StateCmd cmd;
+        if (xQueueReceive(gStateCmd, &cmd, 0) == pdTRUE) {
+            if (cmd == StateCmd::STOP_MOTORS)    { robot.disableMotors(); }
+            if (cmd == StateCmd::ENABLE_MOTORS)  { robot.enableMotors(); }
+            if (cmd == StateCmd::GOTO_WAIT_INIT) goto restart;
+            if (cmd == StateCmd::RESTART_INIT)  {
+                gDisplay.robot_state = RobotState::INIT;
+                if (gDisplay.team == Team::YELLOW) runInitYellow(robot);
+                else                               runInitBlue(robot);
+                phase = Phase::WAIT_TIRETTE_IN;
+                gDisplay.robot_state = RobotState::WAIT_TIRETTE_IN;
+            }
+        }
 
         // Switch d'équipe lu en continu ; changement = init à refaire
         Team t = teamSwitch();
@@ -131,14 +157,12 @@ static void taskStrategy(void *) {
                 gDisplay.robot_state = RobotState::WAIT_TIRETTE_IN;
             }
             break;
-
         case Phase::WAIT_TIRETTE_IN:
             if (!tirette()) {
                 phase = Phase::WAIT_TIRETTE_OUT;
                 gDisplay.robot_state = RobotState::WAIT_TIRETTE_OUT;
             }
             break;
-
         case Phase::WAIT_TIRETTE_OUT:
             break;
         }
@@ -147,30 +171,50 @@ static void taskStrategy(void *) {
     }
 
     // ── Match ─────────────────────────────────────────────────────────────────
+match_start:
     robot.startMatch();
 
     if (gDisplay.team == Team::YELLOW) runStrategyYellow(robot);
     else                               runStrategyBlue(robot);
 
-    // ── Attente endgame si la stratégie s'est terminée avant 80 s ───────────
-    while (!robot.isEndgame() && !robot.isMatchOver())
+    // ── Attente endgame (vérifie aussi RESTART_MATCH) ────────────────────────
+    while (!robot.isEndgame() && !robot.isMatchOver()) {
+        StateCmd cmd;
+        if (xQueueReceive(gStateCmd, &cmd, 0) == pdTRUE) {
+            if (cmd == StateCmd::STOP_MOTORS)    { robot.disableMotors(); }
+            if (cmd == StateCmd::ENABLE_MOTORS)  { robot.enableMotors(); }
+            if (cmd == StateCmd::STOP_MATCH)     { gDisplay.match_start_ms = millis() - MATCH_DURATION_MS; }
+            if (cmd == StateCmd::RESTART_MATCH)  { robot.disableMotors(); goto restart; }
+            if (cmd == StateCmd::GOTO_WAIT_INIT) { robot.disableMotors(); goto restart; }
+        }
         vTaskDelay(pdMS_TO_TICKS(50));
+    }
 
     // ── Repli fin de match ────────────────────────────────────────────────────
     if (!robot.isMatchOver()) {
-        robot.startNearEnd();   // autorise les mouvements malgré isEndgame()
+        robot.startNearEnd();
         gDisplay.robot_state = RobotState::ENDGAME;
         if (gDisplay.team == Team::YELLOW) runNearEndYellow(robot);
         else                               runNearEndBlue(robot);
     }
 
-    // ── Attente fin de match puis désengagement ────────────────────────────────
     while (!robot.isMatchOver()) vTaskDelay(pdMS_TO_TICKS(50));
     robot.disableMotors();
     actuatorsDisable();
     gDisplay.robot_state = RobotState::DONE;
     LOG_I("MAIN", "Match termine");
-    vTaskDelete(nullptr);
+
+    // ── Après match : attente commande UI pour relancer ───────────────────────
+    while (true) {
+        StateCmd cmd;
+        if (xQueueReceive(gStateCmd, &cmd, 0) == pdTRUE) {
+            if (cmd == StateCmd::STOP_MOTORS)    { robot.disableMotors(); }
+            if (cmd == StateCmd::ENABLE_MOTORS)  { robot.enableMotors(); }
+            if (cmd == StateCmd::GOTO_WAIT_INIT) { goto restart; }
+            if (cmd == StateCmd::RESTART_MATCH)  { robot.enableMotors(); goto match_start; }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
@@ -188,6 +232,7 @@ void setup() {
         while (true) vTaskDelay(1000);
     }
 
+    gStateCmd = xQueueCreate(4, sizeof(StateCmd));
     buttonsInit();
     ledsInit();
     actuatorsInit();
@@ -242,13 +287,17 @@ void loop() {
         if (st == RobotState::WAIT_INIT      || st == RobotState::INIT ||
             st == RobotState::WAIT_TIRETTE_IN || st == RobotState::WAIT_TIRETTE_OUT)
             wifiLogLidar(scanBuf, n);
+        // LIDAR absolu toujours envoyé (coordonnées table, filtré en JS)
+        wifiLogLidarAbs(scanBuf, n,
+                        gDisplay.enc_pose_x_mm, gDisplay.enc_pose_y_mm,
+                        gDisplay.enc_pose_theta_rad);
     }
 
     // Pose + actionneurs + commandes WiFi — 200 ms
     if (now - lastWifi >= 200) {
         lastWifi = now;
         char team = (gDisplay.team == Team::YELLOW) ? 'Y' : 'B';
-        wifiLogUpdatePose(motion.getX(), motion.getY(), motion.getThetaDeg(),
+        wifiLogUpdatePose(gDisplay.enc_pose_x_mm, gDisplay.enc_pose_y_mm, gDisplay.enc_pose_theta_deg,
                           robotStateStr(gDisplay.robot_state),
                           gDisplay.nav_dist_mm, gDisplay.nav_delta_deg, team);
         wifiLogUpdateActuators(servoBrasDroit.getPercent(),

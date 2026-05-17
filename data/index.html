@@ -160,7 +160,7 @@ body {
 <body>
 
 <div id="header">
-  <h1>&#128007; Karibous Debug</h1>
+  <h1><span style="font-weight:900;font-size:18px;color:#ffd43b;letter-spacing:-1px;">K</span> Karibous Debug</h1>
   <span id="ws-status" class="disconnected">&#9679; Déconnecté</span>
   <span id="team-badge">— Équipe</span>
   <span id="uptime"></span>
@@ -207,6 +207,17 @@ body {
           <div class="rs-val" id="rs-back">— mm</div>
         </div>
       </div>
+    </div>
+
+    <!-- ── Contrôle état robot ── -->
+    <div id="state-panel" style="background:#111;border:1px solid #333;border-radius:4px;padding:7px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span style="color:#888;font-size:11px;letter-spacing:1px;font-weight:bold;">ROBOT</span>
+      <button class="act-btn" id="btn-stop"          onclick="sendStateCmd('stop_motors')"                           >&#x23F9; Stop moteurs</button>
+      <button class="act-btn" id="btn-enable"        onclick="sendStateCmd('enable_motors')"                        >&#x26A1; Activer moteurs</button>
+      <button class="act-btn" id="btn-winit"         onclick="sendStateCmd('wait_init')"                            >&#x21A9; WAIT_INIT</button>
+      <button class="act-btn seq" id="btn-stop-match" onclick="confirmAndSend('stop_match','Arrêter le match ?')"  >&#x23F1; Stop match</button>
+      <button class="act-btn seq" id="btn-rinit"      onclick="confirmAndSend('restart_init','Relancer Init ?')"   >&#x21BA; Relancer Init</button>
+      <button class="act-btn seq" id="btn-rmatch"     onclick="confirmAndSend('restart_match','Relancer le match ?')">&#x25B6; Relancer Match</button>
     </div>
 
     <!-- ── Actionneurs ── -->
@@ -262,6 +273,7 @@ body {
       <input id="tag-filter" placeholder="Tag…" oninput="renderLogs()">
       <button class="tool-btn" onclick="clearLogs()">Effacer</button>
       <button class="tool-btn active" id="as-btn" onclick="toggleAutoscroll()">&#8595; Auto</button>
+      <button class="tool-btn" id="lidar-abs-btn" onclick="toggleLidarAbs()">&#x25CF; LIDAR terrain</button>
       <span id="log-count">0 logs</span>
     </div>
     <div id="logs"></div>
@@ -289,6 +301,8 @@ const rdrCanvas = document.getElementById('radar-canvas');
 const rdrCtx    = rdrCanvas.getContext('2d');
 let ws            = null;
 let lastLidarTime = 0;
+let showLidarAbs  = false;
+let lidarAbsPts   = [];   // dernière trame lidar_abs
 let logs         = [];
 let visibleLevels= new Set(['E','W','I','D']);
 let autoscroll   = true;
@@ -309,6 +323,12 @@ function toggleLevel(l) {
 function toggleAutoscroll() {
   autoscroll = !autoscroll;
   document.getElementById('as-btn').classList.toggle('active', autoscroll);
+}
+
+function toggleLidarAbs() {
+  showLidarAbs = !showLidarAbs;
+  document.getElementById('lidar-abs-btn').classList.toggle('active', showLidarAbs);
+  drawPose();
 }
 
 function clearLogs() {
@@ -573,6 +593,17 @@ function drawPose() {
 
   drawPOIs();
 
+  // Points LIDAR en coordonnées table (optionnel)
+  if (showLidarAbs && lidarAbsPts.length > 0) {
+    ctx.fillStyle = 'rgba(74,192,255,0.9)';
+    for (const [wx, wy] of lidarAbsPts) {
+      const px2 = wx * SX, py2 = wy * SY;
+      ctx.beginPath();
+      ctx.arc(px2, py2, 2.5, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+
   const px  = pose.x * SX;
   const py  = pose.y * SY;
   const rad = pose.a * Math.PI / 180;
@@ -644,6 +675,10 @@ function connect() {
     } else if (d.type === 'lidar') {
       lastLidarTime = Date.now();
       drawRadar(d.pts);
+
+    } else if (d.type === 'lidar_abs') {
+      lidarAbsPts = d.pts;
+      if (showLidarAbs) drawPose();   // redessine avec les nouveaux points
 
     } else if (d.type === 'act') {
       updateSlider('brasDroit',  d.bd);
@@ -719,6 +754,15 @@ function sendServo(id, val) {
 function sendSeq(id) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({type:'servo', id:'seq_' + id, val:0}));
+}
+
+function sendStateCmd(action) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({type:'state_cmd', action:action}));
+}
+
+function confirmAndSend(action, msg) {
+  if (confirm(msg)) sendStateCmd(action);
 }
 
 function updateSlider(id, val) {

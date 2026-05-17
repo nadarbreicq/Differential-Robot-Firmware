@@ -33,6 +33,8 @@ public:
     void updatePose(float x, float y, float theta_deg, const char* state,
                     float nav_dist_mm, float nav_delta_deg, char team);
     void updateLidar(const LidarPoint* buf, uint16_t n);
+    void updateLidarAbs(const LidarPoint* buf, uint16_t n,
+                        float robot_x, float robot_y, float robot_theta_rad);
     void updateActuators(float bd, float bg, float li, float gr);
     bool pollCmd(ServoCmd& out);
 
@@ -53,9 +55,13 @@ private:
     volatile char  _team{'?'};
     char           _pstate[16]{"?"};
 
-    // LIDAR
+    // LIDAR radar (relatif robot)
     char          _lidarJson[5120];
     volatile bool _lidarNew{false};
+
+    // LIDAR absolu (coordonnées table)
+    char          _lidarAbsJson[5120];
+    volatile bool _lidarAbsNew{false};
 
     // Actionneurs
     volatile float _actBd{0}, _actBg{0}, _actLi{0}, _actGr{0};
@@ -70,6 +76,8 @@ void wifiLogPush(char level, const char* tag, const char* msg);
 void wifiLogUpdatePose(float x, float y, float theta_deg, const char* state,
                        float nav_dist_mm, float nav_delta_deg, char team);
 void wifiLogLidar(const LidarPoint* buf, uint16_t n);
+void wifiLogLidarAbs(const LidarPoint* buf, uint16_t n,
+                     float robot_x, float robot_y, float robot_theta_rad);
 void wifiLogUpdateActuators(float bd, float bg, float li, float gr);
 bool wifiPollCmd(ServoCmd& out);
 

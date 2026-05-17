@@ -27,6 +27,11 @@ void wifiLogLidar(const LidarPoint* buf, uint16_t n) {
     logServer.updateLidar(buf, n);
 }
 
+void wifiLogLidarAbs(const LidarPoint* buf, uint16_t n,
+                     float robot_x, float robot_y, float robot_theta_rad) {
+    logServer.updateLidarAbs(buf, n, robot_x, robot_y, robot_theta_rad);
+}
+
 void wifiLogUpdateActuators(float bd, float bg, float li, float gr) {
     logServer.updateActuators(bd, bg, li, gr);
 }
@@ -100,9 +105,24 @@ void LogServer::begin() {
 
 // ─── Réception WebSocket → commandes actionneurs ──────────────────────────────
 
+#include "../state_cmd.h"
+
 void LogServer::_handleWsMsg(uint8_t* payload, size_t len) {
-    // Format attendu : {"type":"servo","id":"brasDroit","val":65.0}
     const char* p = (const char*)payload;
+
+    // ── Commandes état robot ──────────────────────────────────────────────────
+    if (strstr(p, "\"state_cmd\"")) {
+        if      (strstr(p, "stop_motors"))    sendStateCmd(StateCmd::STOP_MOTORS);
+        else if (strstr(p, "enable_motors"))  sendStateCmd(StateCmd::ENABLE_MOTORS);
+        else if (strstr(p, "stop_match"))     sendStateCmd(StateCmd::STOP_MATCH);
+        else if (strstr(p, "restart_init"))   sendStateCmd(StateCmd::RESTART_INIT);
+        else if (strstr(p, "restart_match"))  sendStateCmd(StateCmd::RESTART_MATCH);
+        else if (strstr(p, "wait_init"))      sendStateCmd(StateCmd::GOTO_WAIT_INIT);
+        return;
+    }
+
+    // ── Commandes actionneurs ─────────────────────────────────────────────────
+    // Format attendu : {"type":"servo","id":"brasDroit","val":65.0}
     if (!strstr(p, "\"servo\"")) return;
 
     ServoCmd cmd = {};
@@ -170,6 +190,45 @@ void LogServer::updateLidar(const LidarPoint* buf, uint16_t n) {
     _lidarNew = true;
 }
 
+// ─── updateLidarAbs ───────────────────────────────────────────────────────────
+
+void LogServer::updateLidarAbs(const LidarPoint* buf, uint16_t n,
+                                float robot_x, float robot_y, float robot_theta_rad) {
+    // Projette chaque point LIDAR en coordonnées table (mm)
+    // Même transformation que Robot::_lidarToWorld()
+    // wx = robot_x + d * cos((270° - angle + offset) + theta_robot)
+    // wy = robot_y - d * sin(...)   (Y+ vers le bas)
+    static constexpr float DEG2RAD_F = 3.14159265f / 180.0f;
+
+    char local[5120];
+    int  pos = 0;
+    pos += snprintf(local + pos, sizeof(local) - pos, "{\"type\":\"lidar_abs\",\"pts\":[");
+    bool first = true;
+    for (uint16_t i = 0; i < n; i += 3) {   // sous-échantillonnage x3
+        if (buf[i].confidence  < OBS_CONFIDENCE_MIN)            continue;
+        if (buf[i].distance_mm < (uint16_t)LIDAR_BODY_DIST_MM) continue;
+        if (buf[i].distance_mm > 3000)                          continue;
+        if (pos >= (int)sizeof(local) - 24)                     break;
+
+        float a  = (270.0f - buf[i].angle_deg + LIDAR_OFFSET_DEG) * DEG2RAD_F
+                   + robot_theta_rad;
+        float d  = (float)buf[i].distance_mm;
+        float wx = robot_x + d * cosf(a);
+        float wy = robot_y - d * sinf(a);
+
+        // Filtre : uniquement les points dans les limites de la table
+        if (wx < 0 || wx > TABLE_WIDTH_MM)  continue;
+        if (wy < 0 || wy > TABLE_HEIGHT_MM) continue;
+
+        pos += snprintf(local + pos, sizeof(local) - pos, "%s[%d,%d]",
+                        first ? "" : ",", (int)wx, (int)wy);
+        first = false;
+    }
+    pos += snprintf(local + pos, sizeof(local) - pos, "]}");
+    memcpy(_lidarAbsJson, local, pos + 1);
+    _lidarAbsNew = true;
+}
+
 // ─── updateActuators ──────────────────────────────────────────────────────────
 
 void LogServer::updateActuators(float bd, float bg, float li, float gr) {
@@ -214,10 +273,16 @@ void LogServer::_loop() {
             _ws.broadcastTXT(buf);
         }
 
-        // LIDAR
+        // LIDAR radar (relatif)
         if (_lidarNew) {
             _lidarNew = false;
             _ws.broadcastTXT(_lidarJson);
+        }
+
+        // LIDAR absolu (coordonnées table)
+        if (_lidarAbsNew) {
+            _lidarAbsNew = false;
+            _ws.broadcastTXT(_lidarAbsJson);
         }
 
         // Actionneurs
