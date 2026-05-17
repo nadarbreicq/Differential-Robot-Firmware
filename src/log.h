@@ -10,13 +10,16 @@
 #if WIFI_LOG_ENABLED
 void wifiLogBegin();
 void wifiLogPush(char level, const char* tag, const char* msg);
-void wifiLogUpdatePose(float x, float y, float theta_deg, const char* state);
+// Déclarée ici pour les fichiers qui n'incluent pas wifi/log_server.h directement.
+// Signature complète définie dans wifi/log_server.h.
+void wifiLogUpdatePose(float x, float y, float theta_deg, const char* state,
+                       float nav_dist_mm, float nav_delta_deg, char team);
 #define _LOG_WIFI(lvl, tag, fmt, ...) \
     do { char _wlb[96]; snprintf(_wlb, sizeof(_wlb), fmt, ##__VA_ARGS__); \
          wifiLogPush(lvl, tag, _wlb); } while(0)
 #else
 inline void wifiLogBegin() {}
-inline void wifiLogUpdatePose(float, float, float, const char*) {}
+inline void wifiLogUpdatePose(float, float, float, const char*, float, float, char) {}
 #define _LOG_WIFI(lvl, tag, fmt, ...)
 #endif
 

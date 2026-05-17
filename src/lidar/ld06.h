@@ -15,7 +15,7 @@ struct LidarPoint {
 
 class LD06 {
 public:
-    LD06(HardwareSerial &serial, uint8_t rxPin, uint8_t txPin, uint8_t pwmPin);
+    LD06(HardwareSerial &serial, uint8_t rxPin, uint8_t pwmPin);  // LD06 one-way RX only
 
     void begin();
     void update();   // à appeler en boucle dans la tâche LIDAR
@@ -27,7 +27,7 @@ public:
 
 private:
     HardwareSerial &_serial;
-    uint8_t _rxPin, _txPin, _pwmPin;
+    uint8_t _rxPin, _pwmPin;
 
     // Réception paquet
     uint8_t  _raw[LD06_PACKET_LEN];

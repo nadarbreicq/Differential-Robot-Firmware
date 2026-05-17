@@ -16,7 +16,7 @@
 
 // ─── Instances globales ───────────────────────────────────────────────────────
 
-static LD06         lidar(Serial1, LIDAR_RX_PIN, -1, LIDAR_PWM_PIN);
+static LD06         lidar(Serial1, LIDAR_RX_PIN, LIDAR_PWM_PIN);
 static StepControl  motion;
 static QuadEncoder  encRight;
 static QuadEncoder  encLeft;

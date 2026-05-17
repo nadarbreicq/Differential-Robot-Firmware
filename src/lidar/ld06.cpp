@@ -21,8 +21,8 @@ static const uint8_t kCrcTable[256] = {
     0xf4,0xb9,0x6e,0x23,0x8d,0xc0,0x17,0x5a,0x06,0x4b,0x9c,0xd1,0x7f,0x32,0xe5,0xa8
 };
 
-LD06::LD06(HardwareSerial &serial, uint8_t rxPin, uint8_t txPin, uint8_t pwmPin)
-    : _serial(serial), _rxPin(rxPin), _txPin(txPin), _pwmPin(pwmPin),
+LD06::LD06(HardwareSerial &serial, uint8_t rxPin, uint8_t pwmPin)
+    : _serial(serial), _rxPin(rxPin), _pwmPin(pwmPin),
       _idx(0), _synced(false), _pendingCnt(0), _lastAngle(-1.0f),
       _scanCnt(0), _rpm(0.0f)
 {

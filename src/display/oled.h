@@ -14,7 +14,6 @@ enum class RobotState : uint8_t {
     OBSTACLE,
     ENDGAME,            // repli fin de match en cours
     DONE,
-    ERROR
 };
 
 static inline const char* robotStateStr(RobotState s) {
@@ -30,7 +29,6 @@ static inline const char* robotStateStr(RobotState s) {
         case RobotState::OBSTACLE:        return "OBSTACLE!";
         case RobotState::ENDGAME:         return "REPLI !";
         case RobotState::DONE:            return "MATCH FINI";
-        case RobotState::ERROR:           return "ERREUR";
         default:                          return "?";
     }
 }
