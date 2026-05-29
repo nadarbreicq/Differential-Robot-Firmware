@@ -26,7 +26,7 @@ Actuellement, chaque déplacement (`gotoXYenc`, `goPID`, etc.) est **bloquant** 
 - Aucune correction de position à l'arrêt (seul le couple de maintien stepper résiste aux poussées)
 - Impossibilité de chaîner les mouvements fluidement
 
-### 1.1 ⬜ Tâche de contrôle moteur continue (`taskMotionControl`)
+### 1.1 ✅ Tâche de contrôle moteur continue (`taskMotionControl`)
 
 **Objectif** : Remplacer `_runWheelPID` bloquant par une tâche FreeRTOS permanente qui tourne à 50 Hz (ou 20 ms / `OBS_POLL_MS`).
 
@@ -113,7 +113,7 @@ L'interface actuelle (`data/index.html`) est fonctionnelle. Plusieurs éléments
 
 ---
 
-### 2.1 ⬜ Marqueur de cible sur le terrain
+### 2.1 ✅ Marqueur de cible sur le terrain
 
 **Objectif** : Afficher la **cible courante** sur la carte du terrain (en plus de la position robot).
 
@@ -141,7 +141,7 @@ Message `{"type":"lidar_abs","pts":[[x,y],...]}` envoyé toutes les 100 ms.
 
 ---
 
-### 2.4 ⬜ Panneau "Motion debug"
+### 2.4 ✅ Panneau "Motion debug"
 
 **Objectif** : Afficher les données de la tâche motion en temps réel.
 
@@ -164,7 +164,7 @@ Message `{"type":"lidar_abs","pts":[[x,y],...]}` envoyé toutes les 100 ms.
 
 ## 3. Autres améliorations
 
-### 3.1 ⬜ Synchronisation POI entre poi.h et index.html
+### 3.1 ✅ Synchronisation POI entre poi.h et index.html
 
 **Contexte** : Coordonnées dupliquées en C++ et JS — tout changement doit être fait aux deux endroits.
 
@@ -172,7 +172,7 @@ Message `{"type":"lidar_abs","pts":[[x,y],...]}` envoyé toutes les 100 ms.
 
 ---
 
-### 3.2 ⬜ Calibration live via interface web
+### 3.2 ✅ Calibration live via interface web
 
 Modification des paramètres de calibration en RAM sans recompilation. Valeur reportée dans `config.h` une fois validée.
 
@@ -202,18 +202,58 @@ Modification des paramètres de calibration en RAM sans recompilation. Valeur re
 
 ### 3.3 ✅ Contrôle d'état du robot via interface web
 
-Panneau "ROBOT" dans l'UI avec 6 boutons :
+Panneau "ROBOT" dans l'UI avec 7 boutons :
 
-| Bouton | Action |
-| --- | --- |
-| ⏹ Stop moteurs | `disableMotors()` — toujours accessible |
-| ⚡ Activer moteurs | `enableMotors()` |
-| ⏱ Stop match | Force `isMatchOver()` → true (confirmation) |
-| ↩ WAIT_INIT | Retour boucle pré-match sans reset |
-| ↺ Relancer Init | Rejoue `runInitXxx` (confirmation) |
-| ▶ Relancer Match | Relance stratégie (confirmation) |
+| Bouton | Action | Commande |
+| --- | --- | --- |
+| ⏹ Stop moteurs | `disableMotors()` — toujours accessible | `stop_motors` |
+| ⚡ Activer moteurs | `enableMotors()` | `enable_motors` |
+| ↩ WAIT_INIT | Retour boucle pré-match sans reset | `wait_init` |
+| ▶ Lancer Init | Rejoue `runInitXxx` (confirmation) | `restart_init` |
+| ▶ Lancer Match | Démarre le match (skip tirette, confirmation) | `start_match` |
+| ⏱ Stop match | Force `isMatchOver()` → true (confirmation) | `stop_match` |
+| ↺ Relancer Match | Reset + relance stratégie (confirmation) | `restart_match` |
 
 Implémentation : `StateCmd` enum dans `src/state_cmd.h`, `QueueHandle_t gStateCmd` consommée par `taskStrategy`, pushée par `log_server`.
+
+---
+
+### 3.4 ✅ Refonte UI — layout 2 colonnes + onglets
+
+**Objectif** : faire du terrain l'élément central et toujours visible, regrouper les autres panneaux dans des onglets à droite.
+
+**Structure** :
+
+- **Colonne gauche** : terrain (canvas 900×600, aspect-ratio 3/2 responsive) + barre toolbar au-dessus (filtres LIDAR, coordonnées souris) + barre pose + panneau ROBOT
+- **Colonne droite (440 px)** : onglets MOTION / ACTIONNEURS / CALIBRATION / LOGS
+
+**Onglets** :
+
+- **MOTION** : panneau debug (état/phase/dist/cap/V L/R/cible) + radar LIDAR + stats détection
+- **ACTIONNEURS** : sliders servos + boutons séquences (verrouillé hors pré-match)
+- **CALIBRATION** : Mécanique + PID + Reset défauts
+- **LOGS** : filtres E/W/I/D + tag + Effacer + Auto + liste logs
+
+---
+
+### 3.5 ✅ Click + drag sur le terrain → goto(x, y, θ)
+
+**Objectif** : pouvoir déplacer le robot à un point précis avec orientation, depuis l'UI.
+
+**Interaction** :
+
+- Clic simple : goto vers (X, Y) sans contrainte d'orientation
+- Clic-drag-relâche : goto vers (X, Y) avec orientation finale = direction de la flèche rouge
+- Seuil drag : 8 pixels (en deçà : clic simple)
+- Preview en temps réel pendant le drag (cercle + flèche + label θ°)
+
+**Sécurité (côté serveur)** :
+
+- Autorisé uniquement après init (`state != WAIT_INIT/INIT`) et hors match en cours (`match_start_ms == 0` OU match déjà fini)
+- Flag `cc` (canClick) calculé dans `main.cpp loop()`, envoyé dans le message `pose`
+- Curseur crosshair côté UI uniquement quand autorisé
+
+**Implémentation** : message WS `{"type":"goto","x":1234,"y":567,"t":90}` (clé `t` optionnelle). Parsé par `LogServer::_handleWsMsg`, mis en attente dans `_fcPending`, consommé par `main.cpp loop()` qui appelle `robot.setTarget(x, y, t)`.
 
 ---
 
@@ -221,12 +261,14 @@ Implémentation : `StateCmd` enum dans `src/state_cmd.h`, `QueueHandle_t gStateC
 
 | Priorité | Item | Dépendances |
 | --- | --- | --- |
-| 1 | `taskMotionControl` (1.1) | Base de tout le reste |
-| 2 | Marqueur cible + Motion debug (2.1, 2.4) | 1.1 |
-| 3 | Blend (1.2) | 1.1 |
-| 4 | Position hold (1.3) | 1.1 |
-| 5 | Calibration live groupes 1+2 (3.2) | Indépendant |
-| 6 | Graphe temps réel (2.5) | 2.4 |
-| 7 | followPath API (1.4) | 1.2 |
-| 8 | File waypoints UI (2.2) | 1.4 |
-| 9 | Sync POI (3.1) | Indépendant |
+| 1 | ~~`taskMotionControl` (1.1)~~ ✅ | — |
+| 2 | ~~Marqueur cible + Motion debug (2.1, 2.4)~~ ✅ | — |
+| 3 | **Blend (1.2)** | 1.1 |
+| 4 | **Position hold (1.3)** | 1.1 |
+| 5 | ~~Calibration live groupes 1+2 (3.2)~~ ✅ | — |
+| 6 | **Graphe temps réel (2.5)** | 2.4 |
+| 7 | **followPath API (1.4)** | 1.2 |
+| 8 | **File waypoints UI (2.2)** | 1.4 |
+| 9 | ~~Sync POI (3.1)~~ ✅ | — |
+| 10 | ~~Refonte UI 2 colonnes (3.4)~~ ✅ | — |
+| 11 | ~~Click + drag goto (3.5)~~ ✅ | — |

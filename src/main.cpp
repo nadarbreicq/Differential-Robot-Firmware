@@ -2,10 +2,12 @@
 #include <math.h>
 #include <Wire.h>
 #include "config.h"
+#include "live_config.h"
 #include "log.h"
 #include "wifi/log_server.h"
 #include "lidar/ld06.h"
 #include "motion/step_control.h"
+#include "motion/motion_ctrl.h"
 #include "strategy/robot.h"
 #include "strategy/strategy.h"
 #include "display/oled.h"
@@ -20,7 +22,7 @@ static LD06         lidar(Serial1, LIDAR_RX_PIN, LIDAR_PWM_PIN);
 static StepControl  motion;
 static QuadEncoder  encRight;
 static QuadEncoder  encLeft;
-static Robot        robot(motion, lidar);
+static Robot        robot(motion, lidar, gMotionCtrl);
 
 static LidarPoint   scanBuf[LD06_SCAN_BUF_SIZE];
 
@@ -61,10 +63,10 @@ static void taskEncoders(void *) {
         lastL = curL;
         lastR = curR;
 
-        float leftMm  = (float)dL * MM_PER_COUNT;
-        float rightMm = (float)dR * MM_PER_COUNT;
+        float leftMm  = (float)dL * gCalib.mmPerCount;
+        float rightMm = (float)dR * gCalib.mmPerCount;
         float dDist   = (leftMm + rightMm) * 0.5f;
-        float dTheta  = (rightMm - leftMm) / ENC_WHEELBASE_MM;
+        float dTheta  = (rightMm - leftMm) / gCalib.encWheelbase;
         float mid     = encTheta + dTheta * 0.5f;
 
         gDisplay.enc_pose_x_mm += dDist * cosf(mid);
@@ -110,6 +112,10 @@ static void taskStrategy(void *) {
                   ENC_LEFT_INVERT  ? ENC_LEFT_A_PIN  : ENC_LEFT_B_PIN,  PCNT_UNIT_3);
     robot.setEncoders(&encLeft, &encRight);
 
+    // taskMotionControl : 50 Hz sur Core 1, prio 3 — démarre une fois que les
+    // encodeurs sont prêts (la tâche les lit dès le premier tick).
+    gMotionCtrl.begin(&motion, &encLeft, &encRight, &lidar);
+
 restart:   // point de retour pour GOTO_WAIT_INIT / RESTART_MATCH
     robot.disableMotors();
     gDisplay.team = teamSwitch();
@@ -129,6 +135,7 @@ restart:   // point de retour pour GOTO_WAIT_INIT / RESTART_MATCH
             if (cmd == StateCmd::STOP_MOTORS)    { robot.disableMotors(); }
             if (cmd == StateCmd::ENABLE_MOTORS)  { robot.enableMotors(); }
             if (cmd == StateCmd::GOTO_WAIT_INIT) goto restart;
+            if (cmd == StateCmd::START_MATCH)    goto match_start;   // skip tirette
             if (cmd == StateCmd::RESTART_INIT)  {
                 gDisplay.robot_state = RobotState::INIT;
                 if (gDisplay.team == Team::YELLOW) runInitYellow(robot);
@@ -211,7 +218,8 @@ match_start:
             if (cmd == StateCmd::STOP_MOTORS)    { robot.disableMotors(); }
             if (cmd == StateCmd::ENABLE_MOTORS)  { robot.enableMotors(); }
             if (cmd == StateCmd::GOTO_WAIT_INIT) { goto restart; }
-            if (cmd == StateCmd::RESTART_MATCH)  { robot.enableMotors(); goto match_start; }
+            if (cmd == StateCmd::RESTART_MATCH ||
+                cmd == StateCmd::START_MATCH)    { robot.enableMotors(); goto match_start; }
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -293,17 +301,51 @@ void loop() {
                         gDisplay.enc_pose_theta_rad);
     }
 
-    // Pose + actionneurs + commandes WiFi — 200 ms
+    // Pose + actionneurs + motion debug + commandes WiFi — 200 ms
     if (now - lastWifi >= 200) {
         lastWifi = now;
         char team = (gDisplay.team == Team::YELLOW) ? 'Y' : 'B';
+        // canClick : autorisé après init et hors match en cours
+        RobotState rs = gDisplay.robot_state;
+        bool postInit  = (rs != RobotState::WAIT_INIT) && (rs != RobotState::INIT);
+        bool inMatch   = (gDisplay.match_start_ms > 0) &&
+                         (now - gDisplay.match_start_ms < MATCH_DURATION_MS);
+        bool canClick  = postInit && !inMatch;
         wifiLogUpdatePose(gDisplay.enc_pose_x_mm, gDisplay.enc_pose_y_mm, gDisplay.enc_pose_theta_deg,
                           robotStateStr(gDisplay.robot_state),
-                          gDisplay.nav_dist_mm, gDisplay.nav_delta_deg, team);
+                          gDisplay.nav_dist_mm, gDisplay.nav_delta_deg, team, canClick);
         wifiLogUpdateActuators(servoBrasDroit.getPercent(),
                                servoBrasGauche.getPercent(),
                                servoLifter.getPercent(),
                                servoGripper.getPercent());
+        wifiLogUpdateMotion((uint8_t)gMotionCtrl.getState(),
+                            (uint8_t)gMotionCtrl.getPhase(),
+                            gMotionCtrl.getDistMm(),
+                            gMotionCtrl.getSpeedCap(),
+                            gMotionCtrl.getCmdL(),
+                            gMotionCtrl.getCmdR(),
+                            gMotionCtrl.getTargetX(),
+                            gMotionCtrl.getTargetY(),
+                            gMotionCtrl.getTargetTheta());
+    }
+
+    // Click utilisateur sur le terrain → goto vers (x, y[, theta]).
+    // Autorisé après init (state != WAIT_INIT/INIT) et hors match en cours
+    // (match_start_ms == 0 OU match déjà fini).
+    float fcX, fcY, fcTheta;
+    if (wifiPollFieldClick(fcX, fcY, fcTheta)) {
+        RobotState st = gDisplay.robot_state;
+        bool postInit = (st != RobotState::WAIT_INIT) && (st != RobotState::INIT);
+        bool inMatch  = (gDisplay.match_start_ms > 0) &&
+                        (millis() - gDisplay.match_start_ms < MATCH_DURATION_MS);
+        if (postInit && !inMatch) {
+            robot.enableMotors();
+            robot.setTarget(fcX, fcY, fcTheta);   // fcTheta = NAN si pas de drag
+            if (isnanf(fcTheta)) LOG_I("UI", "Goto click: %.0f,%.0f", (double)fcX, (double)fcY);
+            else                 LOG_I("UI", "Goto click: %.0f,%.0f theta=%.0f", (double)fcX, (double)fcY, (double)fcTheta);
+        } else {
+            LOG_W("UI", "Goto ignore (etat %d, inMatch=%d)", (int)st, (int)inMatch);
+        }
     }
 
     // Commandes actionneurs depuis l'interface web (seulement avant init)

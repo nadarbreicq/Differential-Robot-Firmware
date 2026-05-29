@@ -1,4 +1,5 @@
 #include "step_control.h"
+#include "../live_config.h"
 #include "../log.h"
 #include <math.h>
 #include "driver/gpio.h"
@@ -55,7 +56,7 @@ void StepControl::startGo(float mm) {
     LOG_D("STEP", "go %.0fmm -> %ld pas  spd=%lu Hz  acc=%lu stp/s2",
           mm, (long)steps,
           (unsigned long)_mmSToHz(_speed),
-          (unsigned long)((uint32_t)(_accel * STEPS_PER_MM)));
+          (unsigned long)((uint32_t)(_accel * gCalib.stepsPerMm)));
     _stepL->move(steps);
     _stepR->move(steps);
 }
@@ -63,8 +64,8 @@ void StepControl::startGo(float mm) {
 void StepControl::startTurnOpen(float deg) {
     _stepL->setSpeedInHz(_mmSToHz(TURN_SPEED_MMS));
     _stepR->setSpeedInHz(_mmSToHz(TURN_SPEED_MMS));
-    _stepL->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * STEPS_PER_MM));
-    _stepR->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * STEPS_PER_MM));
+    _stepL->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * gCalib.stepsPerMm));
+    _stepR->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * gCalib.stepsPerMm));
     _refL = _stepL->getCurrentPosition();
     _refR = _stepR->getCurrentPosition();
     if (deg >= 0) { _stepL->runBackward(); _stepR->runForward();  }  // CCW
@@ -87,7 +88,7 @@ void StepControl::setMotorSpeeds(float leftMmS, float rightMmS) {
 void StepControl::setMotorVelocities(float leftMmS, float rightMmS) {
     auto apply = [](FastAccelStepper *s, float mmS) {
         if (fabsf(mmS) < 0.5f) { s->stopMove(); return; }
-        s->setSpeedInHz((uint32_t)(fabsf(mmS) * STEPS_PER_MM));
+        s->setSpeedInHz((uint32_t)(fabsf(mmS) * gCalib.stepsPerMm));
         if (mmS > 0) s->runForward();
         else         s->runBackward();
     };
@@ -98,14 +99,14 @@ void StepControl::setMotorVelocities(float leftMmS, float rightMmS) {
 
 void StepControl::startTurn(float deg) {
     // Arc = (wheelbase × π × |deg|) / 360 pour chaque roue
-    float arc = WHEELBASE_MM * 3.14159265f * fabsf(deg) / 360.0f;
+    float arc = gCalib.wheelbase * 3.14159265f * fabsf(deg) / 360.0f;
     int32_t arcSteps = _mmToSteps(arc);
     int32_t sign = (deg >= 0) ? 1 : -1;   // positif = CCW = gauche
 
     _stepL->setSpeedInHz(_mmSToHz(TURN_SPEED_MMS));
     _stepR->setSpeedInHz(_mmSToHz(TURN_SPEED_MMS));
-    _stepL->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * STEPS_PER_MM));
-    _stepR->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * STEPS_PER_MM));
+    _stepL->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * gCalib.stepsPerMm));
+    _stepR->setAcceleration((uint32_t)(TURN_ACCEL_MMS2 * gCalib.stepsPerMm));
 
     _refL = _stepL->getCurrentPosition();
     _refR = _stepR->getCurrentPosition();
@@ -134,7 +135,7 @@ void StepControl::enableMotors() {
 
 void StepControl::softStop(float accelOverride) {
     if (accelOverride > 0) {
-        uint32_t a = (uint32_t)(accelOverride * STEPS_PER_MM);
+        uint32_t a = (uint32_t)(accelOverride * gCalib.stepsPerMm);
         _stepL->setAcceleration(a);
         _stepR->setAcceleration(a);
     }
@@ -151,7 +152,7 @@ void StepControl::syncPose() {
     int32_t dR = _stepR->getCurrentPosition() - _refR;
     _refL = _stepL->getCurrentPosition();
     _refR = _stepR->getCurrentPosition();
-    _updatePoseFromDelta((float)dL / STEPS_PER_MM, (float)dR / STEPS_PER_MM);
+    _updatePoseFromDelta((float)dL / gCalib.stepsPerMm, (float)dR / gCalib.stepsPerMm);
 }
 
 void StepControl::setPosition(float x_mm, float y_mm, float theta_deg) {
@@ -167,7 +168,7 @@ void StepControl::setPosition(float x_mm, float y_mm, float theta_deg) {
 void StepControl::setSpeed(float mmS)        { _speed = mmS; }
 void StepControl::setAcceleration(float mmS2) { _accel = mmS2; }
 void StepControl::pushAcceleration() {
-    uint32_t a = (uint32_t)(_accel * STEPS_PER_MM);
+    uint32_t a = (uint32_t)(_accel * gCalib.stepsPerMm);
     _stepL->setAcceleration(a);
     _stepR->setAcceleration(a);
 }
@@ -177,8 +178,8 @@ void StepControl::pushAcceleration() {
 void StepControl::_applySpeed() {
     _stepL->setSpeedInHz(_mmSToHz(_speed));
     _stepR->setSpeedInHz(_mmSToHz(_speed));
-    _stepL->setAcceleration((uint32_t)(_accel * STEPS_PER_MM));
-    _stepR->setAcceleration((uint32_t)(_accel * STEPS_PER_MM));
+    _stepL->setAcceleration((uint32_t)(_accel * gCalib.stepsPerMm));
+    _stepR->setAcceleration((uint32_t)(_accel * gCalib.stepsPerMm));
 }
 
 void StepControl::_waitDone() {
@@ -186,17 +187,17 @@ void StepControl::_waitDone() {
 }
 
 int32_t StepControl::_mmToSteps(float mm) const {
-    return (int32_t)(mm * STEPS_PER_MM);
+    return (int32_t)(mm * gCalib.stepsPerMm);
 }
 
 uint32_t StepControl::_mmSToHz(float mmS) const {
-    return (uint32_t)(fabsf(mmS) * STEPS_PER_MM);
+    return (uint32_t)(fabsf(mmS) * gCalib.stepsPerMm);
 }
 
 
 void StepControl::_updatePoseFromDelta(float leftMm, float rightMm) {
     float dDist  = (rightMm + leftMm) * 0.5f;
-    float dTheta = (rightMm - leftMm) / WHEELBASE_MM;
+    float dTheta = (rightMm - leftMm) / gCalib.wheelbase;
     float mid    = _theta + dTheta * 0.5f;
     _x     += dDist * cosf(mid);
     _y     -= dDist * sinf(mid);   // Y+ vers le bas → sin inversé

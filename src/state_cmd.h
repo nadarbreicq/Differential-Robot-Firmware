@@ -11,6 +11,7 @@ enum class StateCmd : uint8_t {
     RESTART_INIT,    // relance runInitXxx depuis position actuelle
     RESTART_MATCH,   // relance la stratégie depuis position actuelle
     GOTO_WAIT_INIT,  // retour à l'état WAIT_INIT (boucle pré-match)
+    START_MATCH,     // démarre le match (équivalent retrait tirette)
 };
 
 extern QueueHandle_t gStateCmd;

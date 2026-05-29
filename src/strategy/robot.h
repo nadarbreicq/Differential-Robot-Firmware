@@ -1,5 +1,6 @@
 #pragma once
 #include "../motion/step_control.h"
+#include "../motion/motion_ctrl.h"
 #include "../motion/encoder.h"
 #include "../lidar/ld06.h"
 #include "../config.h"
@@ -14,7 +15,7 @@ constexpr bool REAR    = true;
 // est terminé (ou interrompu par un obstacle).
 class Robot {
 public:
-    Robot(StepControl &motion, LD06 &lidar);
+    Robot(StepControl &motion, LD06 &lidar, MotionController &motionCtrl);
 
     // ── Déplacements ─────────────────────────────────────────────────────────
     void go(float mm);                              // relatif, step-based
@@ -48,6 +49,19 @@ public:
     float getSpeed()        const { return _motion.getSpeed(); }
     float getAcceleration() const { return _motion.getAcceleration(); }
 
+    // ── API motion non-bloquante (taskMotionControl) ─────────────────────────
+    // Met à jour la cible courante de la tâche motion (retour immédiat).
+    void setTarget(float x_mm, float y_mm);
+    void setTarget(float x_mm, float y_mm, float arrival_deg, bool backward = false);
+    // Maintient la pose courante en mode HOLD.
+    void holdPosition() { _motionCtrl.holdPosition(); }
+    // Libère la tâche motion → IDLE (moteurs en roue libre).
+    void releaseMotion() { _motionCtrl.release(); }
+    // Bloque jusqu'à convergence (ou distance < blendMm si > 0).
+    // Surveille aussi match over / endgame et libère la tâche motion.
+    bool waitArrived(float blendMm = 0.0f);
+    MotionController::State getMotionState() const { return _motionCtrl.getState(); }
+
     // ── Détection obstacle ───────────────────────────────────────────────────
     enum class DetectMode : uint8_t {
         SIMPLE,
@@ -56,10 +70,15 @@ public:
     void enableObstacle()             { _obstacleEn = true;  }
     void disableObstacle()            { _obstacleEn = false; }
     bool obstacleEnabled() const      { return _obstacleEn; }
-    void setDetectMode(DetectMode m)  { _detectMode = m; }
+    void setDetectMode(DetectMode m)  {
+        _detectMode = m;
+        _motionCtrl.setDetectMode(m == DetectMode::WALL_FILTERED
+            ? MotionController::DetectMode::WALL_FILTERED
+            : MotionController::DetectMode::SIMPLE);
+    }
 
     // ── Moteurs ──────────────────────────────────────────────────────────────
-    void disableMotors()  { _motion.disableMotors(); }
+    void disableMotors()  { _motionCtrl.release(); _motion.disableMotors(); }
     void enableMotors()   { _motion.enableMotors();  }
 
     // ── Chrono de match ──────────────────────────────────────────────────────
@@ -79,17 +98,16 @@ public:
     float getThetaDeg() const { return _motion.getThetaDeg(); }
 
 private:
-    StepControl &_motion;
-    LD06        &_lidar;
-    bool         _obstacleEn = true;
-    DetectMode   _detectMode = DetectMode::SIMPLE;
+    StepControl       &_motion;
+    LD06              &_lidar;
+    MotionController  &_motionCtrl;
+    bool               _obstacleEn = true;
+    DetectMode         _detectMode = DetectMode::SIMPLE;
 
     bool          _nearEndMode = false;
     LidarPoint    _scanBuf[LD06_SCAN_BUF_SIZE];
     QuadEncoder  *_encLeft  = nullptr;
     QuadEncoder  *_encRight = nullptr;
-
-    void _runWheelPID(int32_t tL, int32_t tR, float speed, float accel, float stopMm = ENC_P1_STOP_MM);
 
     bool _obstacleInDir(float dir_rad);
     bool _obstacleSimple(float dir_rad);

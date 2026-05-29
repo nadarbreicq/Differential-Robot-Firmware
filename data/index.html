@@ -24,41 +24,6 @@ body {
 .disconnected { background: #3d1a1a; color: #db6060; border: 1px solid #7a3535; }
 #uptime { color: #666; font-size: 11px; margin-left: auto; }
 
-/* ── Layout principal ── */
-#content { flex: 1; display: flex; overflow: hidden; }
-
-/* ── Panneau terrain ── */
-#field-panel { flex-shrink: 0; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-#field-wrap { position: relative; display: inline-block; border: 1px solid #333; border-radius: 4px; overflow: hidden; }
-#field-img    { display: block; width: 600px; height: 400px; }
-#field-canvas { position: absolute; top: 0; left: 0; width: 600px; height: 400px; }
-#poi-tooltip {
-  position: absolute; display: none; pointer-events: none; z-index: 10;
-  background: rgba(10,10,10,0.88); border: 1px solid #555; border-radius: 4px;
-  padding: 5px 9px; font-size: 11px; color: #e0e0e0; white-space: nowrap; line-height: 1.6;
-}
-
-#pose-bar {
-  background: #1e2e1e; border: 1px solid #2d4a2d; border-radius: 4px;
-  padding: 5px 10px; font-size: 12px; color: #6ddb60;
-  display: flex; gap: 16px; align-items: center;
-}
-#pose-bar span { color: #888; }
-
-/* ── Radar LIDAR ── */
-#radar-wrap {
-  background: #111; border: 1px solid #333; border-radius: 4px;
-  display: flex; align-items: center; gap: 0; overflow: hidden;
-}
-#radar-canvas { display: block; flex-shrink: 0; }
-#radar-stats {
-  flex: 1; padding: 10px 14px; font-size: 12px;
-  display: flex; flex-direction: column; gap: 8px;
-}
-#radar-stats .rs-label { color: #666; font-size: 11px; margin-bottom: 2px; }
-#radar-stats .rs-val   { color: #e0e0e0; font-size: 13px; }
-#radar-stats .rs-val.alert { color: #ff6b6b; }
-
 /* ── Badge équipe ── */
 #team-badge {
   padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: bold;
@@ -67,9 +32,134 @@ body {
 #team-badge.yellow { background: #3d3000; color: #ffd43b; border-color: #7a6000; }
 #team-badge.blue   { background: #001a3d; color: #74c0fc; border-color: #00428a; }
 
+/* ── Layout principal : 2 colonnes ── */
+#content { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+/* ═══ COLONNE GAUCHE : terrain + contrôles ═══════════════════════════════ */
+#main-col {
+  flex: 1; min-width: 0; padding: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+  overflow: hidden;
+}
+
+/* Barre d'outils au-dessus du terrain */
+#field-toolbar {
+  background: #222; padding: 6px 10px;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  border-radius: 4px; flex-shrink: 0;
+}
+.toolbar-lbl {
+  font-size: 11px; color: #555; letter-spacing: 1px; font-weight: bold;
+}
+
+/* Zone terrain — prend tout l'espace vertical restant */
+#field-area {
+  flex: 1; min-height: 0;
+  display: flex; justify-content: center; align-items: center;
+  background: #0a0a0a; border-radius: 4px;
+}
+#field-wrap {
+  position: relative; aspect-ratio: 3/2;
+  max-height: 100%; max-width: 100%;
+  height: 100%;
+  border: 1px solid #333; border-radius: 4px; overflow: hidden;
+}
+#field-img    { width: 100%; height: 100%; display: block; }
+#field-canvas {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  cursor: default;
+}
+#field-canvas.clickable { cursor: crosshair; }
+#poi-tooltip {
+  position: absolute; display: none; pointer-events: none; z-index: 10;
+  background: rgba(10,10,10,0.88); border: 1px solid #555; border-radius: 4px;
+  padding: 5px 9px; font-size: 11px; color: #e0e0e0; white-space: nowrap; line-height: 1.6;
+}
+
+/* Barre pose (X, Y, θ, Nav) */
+#pose-bar {
+  background: #1e2e1e; border: 1px solid #2d4a2d; border-radius: 4px;
+  padding: 6px 12px; font-size: 12px; color: #6ddb60;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#pose-bar span { color: #888; }
+
+/* Panneau ROBOT (boutons contrôle) */
+#state-panel {
+  background: #111; border: 1px solid #333; border-radius: 4px;
+  padding: 7px 12px; display: flex; gap: 8px; align-items: center;
+  flex-wrap: wrap; flex-shrink: 0;
+}
+
+/* ═══ COLONNE DROITE : onglets ═══════════════════════════════════════════ */
+#side-col {
+  width: 440px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  border-left: 1px solid #333; background: #1a1a1a;
+  overflow: hidden;
+}
+#tabs {
+  display: flex; background: #1a1a1a;
+  border-bottom: 1px solid #333; flex-shrink: 0;
+}
+.tab {
+  flex: 1; padding: 9px 8px;
+  background: transparent; border: none; color: #888;
+  cursor: pointer; font-family: monospace; font-size: 12px;
+  font-weight: bold; letter-spacing: 1px;
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+}
+.tab:hover { color: #ccc; background: #222; }
+.tab.active {
+  color: #fff; border-bottom-color: #6ddb60; background: #1e2820;
+}
+#tab-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.tab-pane { display: none; flex: 1; overflow: auto; padding: 10px;
+  flex-direction: column; gap: 8px; min-height: 0;
+}
+.tab-pane.active { display: flex; }
+.tab-pane#tab-logs { padding: 0; }
+
+/* ── Motion debug ── */
+#motion-panel {
+  background:#111; border:1px solid #333; border-radius:4px;
+  padding:8px 12px; display:flex; flex-direction:column; gap:4px;
+  flex-shrink: 0;
+}
+#motion-hdr {
+  display:flex; align-items:center; justify-content:space-between;
+  font-size:12px; font-weight:bold; color:#888; letter-spacing:1px;
+  padding-bottom:4px; border-bottom:1px solid #2a2a2a; margin-bottom:4px;
+}
+.mot-row { display:flex; align-items:center; font-size:12px; gap:8px; }
+.mot-lbl { width:70px; color:#888; flex-shrink:0; }
+.mot-val { color:#e0e0e0; font-family:monospace; }
+#mot-state.s-IDLE     { color:#666; }
+#mot-state.s-MOVING   { color:#6ddb60; }
+#mot-state.s-HOLD     { color:#74c0fc; }
+#mot-state.s-OBSTACLE { color:#ff6b6b; }
+
+/* ── Radar LIDAR (dans onglet Motion) ── */
+#radar-wrap {
+  background: #111; border: 1px solid #333; border-radius: 4px;
+  display: flex; align-items: stretch; gap: 0; overflow: hidden;
+  flex-shrink: 0;
+}
+#radar-canvas { display: block; flex-shrink: 0; }
+#radar-stats {
+  flex: 1; padding: 8px 12px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 6px; justify-content: center;
+}
+#radar-stats .rs-label { color: #666; font-size: 10px; margin-bottom: 1px; letter-spacing: 1px; }
+#radar-stats .rs-val   { color: #e0e0e0; font-size: 13px; font-family: monospace; }
+#radar-stats .rs-val.alert { color: #ff6b6b; }
+
 /* ── Actionneurs ── */
 #act-panel {
   background: #111; border: 1px solid #333; border-radius: 4px; overflow: hidden;
+  flex-shrink: 0;
 }
 #act-header {
   display: flex; justify-content: space-between; align-items: center;
@@ -79,10 +169,8 @@ body {
 #act-lock { font-size: 11px; font-weight: normal; }
 #act-lock.unlocked { color: #6ddb60; }
 #act-lock.locked   { color: #666; }
-#act-sliders { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
-.servo-row {
-  display: flex; align-items: center; gap: 8px;
-}
+#act-sliders { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.servo-row { display: flex; align-items: center; gap: 8px; }
 .servo-label { width: 80px; font-size: 12px; color: #aaa; flex-shrink: 0; }
 .servo-row input[type=range] {
   flex: 1; height: 4px; accent-color: #6ddb60; cursor: pointer;
@@ -93,8 +181,10 @@ body {
   padding: 6px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px;
   border-top: 1px solid #2a2a2a;
 }
+
+/* ── Boutons génériques ── */
 .act-btn {
-  padding: 3px 10px; background: #222; border: 1px solid #444;
+  padding: 4px 10px; background: #222; border: 1px solid #444;
   color: #bbb; border-radius: 3px; cursor: pointer; font-size: 12px;
   font-family: monospace;
 }
@@ -103,13 +193,20 @@ body {
 .act-btn.seq { border-color: #5a4a00; color: #ffd43b; }
 .act-btn.seq:hover:not(:disabled) { background: #2d2a00; }
 
-/* ── Panneau logs ── */
-#log-panel {
-  flex: 1; display: flex; flex-direction: column;
-  border-left: 1px solid #333; overflow: hidden;
+/* ── Calibration ── */
+#calib-pane { gap: 4px; }
+.calib-group { color:#777; font-size:11px; letter-spacing:1px; padding:6px 0 4px; font-weight: bold; }
+.calib-row   { display:flex; align-items:center; gap:8px; min-height:24px; }
+.calib-lbl   { width:100px; font-size:12px; color:#aaa; flex-shrink:0; }
+.calib-inp   {
+  width:90px; background:#1a1a1a; border:1px solid #444; color:#e0e0e0;
+  padding:3px 6px; border-radius:3px; font-family:monospace; font-size:12px;
 }
+.calib-inp:focus { outline:none; border-color:#5a7a5a; }
+.calib-unit  { font-size:11px; color:#666; }
 
-#filters {
+/* ── Logs ── */
+#log-filters {
   padding: 6px 10px; background: #222;
   display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
   border-bottom: 1px solid #333; flex-shrink: 0;
@@ -127,7 +224,7 @@ body {
 
 #tag-filter {
   background: #2a2a2a; border: 1px solid #444; color: #e0e0e0;
-  padding: 2px 8px; border-radius: 3px; font-family: monospace; font-size: 12px; width: 110px;
+  padding: 2px 8px; border-radius: 3px; font-family: monospace; font-size: 12px; width: 90px;
 }
 #tag-filter::placeholder { color: #555; }
 .tool-btn {
@@ -136,14 +233,11 @@ body {
 }
 .tool-btn:hover { background: #333; }
 .tool-btn.active { background: #1a3d22; border-color: #2d6e42; color: #6ddb60; }
-
 #log-count { color: #555; font-size: 11px; margin-left: auto; }
-
-#logs { flex: 1; overflow-y: auto; padding: 4px 6px; }
+#logs { flex: 1; overflow-y: auto; padding: 4px 6px; min-height: 0; }
 #logs::-webkit-scrollbar { width: 6px; }
 #logs::-webkit-scrollbar-track { background: #1a1a1a; }
 #logs::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
-
 .log-line {
   padding: 1px 4px; border-radius: 2px; line-height: 1.5;
   white-space: pre-wrap; word-break: break-all;
@@ -168,13 +262,28 @@ body {
 
 <div id="content">
 
-  <!-- ── Terrain ── -->
-  <div id="field-panel">
-    <div id="field-wrap">
-      <img id="field-img" src="/field.jpg" alt="Terrain">
-      <canvas id="field-canvas" width="600" height="400"></canvas>
-      <div id="poi-tooltip"></div>
+  <!-- ═══ COLONNE GAUCHE : terrain + contrôles ═══════════════════════════ -->
+  <div id="main-col">
+
+    <!-- Barre d'outils terrain -->
+    <div id="field-toolbar">
+      <span class="toolbar-lbl">TERRAIN</span>
+      <button class="tool-btn" id="lidar-abs-btn" onclick="toggleLidarAbs()">&#x25CF; LIDAR terrain</button>
+      <span style="margin-left:auto;font-size:11px;color:#666;">
+        &#x1F5B1; <b id="cursor-coord" style="color:#888">—</b>
+      </span>
     </div>
+
+    <!-- Terrain (élément central qui prend tout l'espace dispo) -->
+    <div id="field-area">
+      <div id="field-wrap">
+        <img id="field-img" src="/field.jpg" alt="Terrain">
+        <canvas id="field-canvas" width="900" height="600"></canvas>
+        <div id="poi-tooltip"></div>
+      </div>
+    </div>
+
+    <!-- Barre pose -->
     <div id="pose-bar">
       <span>X</span> <b id="px">—</b> mm
       <span>Y</span> <b id="py">—</b> mm
@@ -183,112 +292,214 @@ body {
       <b id="pstate" style="color:#fff">—</b>
       <span>&#x2502;</span>
       <span>Nav</span> <b id="pnav">—</b>
-      <span style="margin-left:auto">&#x1F5B1;</span> <b id="cursor-coord" style="color:#555">—</b>
     </div>
 
-    <!-- ── Radar LIDAR ── -->
-    <div id="radar-wrap">
-      <canvas id="radar-canvas" width="220" height="220"></canvas>
-      <div id="radar-stats">
-        <div>
-          <div class="rs-label">Point le plus proche</div>
-          <div class="rs-val" id="rs-closest">— mm</div>
-        </div>
-        <div>
-          <div class="rs-label">Points détectés</div>
-          <div class="rs-val" id="rs-count">—</div>
-        </div>
-        <div>
-          <div class="rs-label">Avant (±30°)</div>
-          <div class="rs-val" id="rs-front">— mm</div>
-        </div>
-        <div>
-          <div class="rs-label">Arrière (±30°)</div>
-          <div class="rs-val" id="rs-back">— mm</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Contrôle état robot ── -->
-    <div id="state-panel" style="background:#111;border:1px solid #333;border-radius:4px;padding:7px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <!-- Contrôles ROBOT -->
+    <div id="state-panel">
       <span style="color:#888;font-size:11px;letter-spacing:1px;font-weight:bold;">ROBOT</span>
-      <button class="act-btn" id="btn-stop"          onclick="sendStateCmd('stop_motors')"                           >&#x23F9; Stop moteurs</button>
-      <button class="act-btn" id="btn-enable"        onclick="sendStateCmd('enable_motors')"                        >&#x26A1; Activer moteurs</button>
-      <button class="act-btn" id="btn-winit"         onclick="sendStateCmd('wait_init')"                            >&#x21A9; WAIT_INIT</button>
-      <button class="act-btn seq" id="btn-stop-match" onclick="confirmAndSend('stop_match','Arrêter le match ?')"  >&#x23F1; Stop match</button>
-      <button class="act-btn seq" id="btn-rinit"      onclick="confirmAndSend('restart_init','Relancer Init ?')"   >&#x21BA; Relancer Init</button>
-      <button class="act-btn seq" id="btn-rmatch"     onclick="confirmAndSend('restart_match','Relancer le match ?')">&#x25B6; Relancer Match</button>
+      <button class="act-btn" id="btn-stop"            onclick="sendStateCmd('stop_motors')"                            >&#x23F9; Stop moteurs</button>
+      <button class="act-btn" id="btn-enable"          onclick="sendStateCmd('enable_motors')"                          >&#x26A1; Activer moteurs</button>
+      <button class="act-btn" id="btn-winit"           onclick="sendStateCmd('wait_init')"                              >&#x21A9; WAIT_INIT</button>
+      <button class="act-btn seq" id="btn-launch-init" onclick="confirmAndSend('restart_init','Lancer Init ?')"         >&#x25B6; Lancer Init</button>
+      <button class="act-btn seq" id="btn-launch-match" onclick="confirmAndSend('start_match','Lancer le match ?')"     >&#x25B6; Lancer Match</button>
+      <button class="act-btn seq" id="btn-stop-match"  onclick="confirmAndSend('stop_match','Arrêter le match ?')"      >&#x23F1; Stop match</button>
+      <button class="act-btn seq" id="btn-rmatch"      onclick="confirmAndSend('restart_match','Relancer le match ?')"  >&#x21BA; Relancer Match</button>
     </div>
 
-    <!-- ── Actionneurs ── -->
-    <div id="act-panel">
-      <div id="act-header">
-        <span>ACTIONNEURS</span>
-        <span id="act-lock" class="locked">&#128274; Hors pré-match</span>
-      </div>
-      <div id="act-sliders">
-        <div class="servo-row">
-          <span class="servo-label">Bras Droit</span>
-          <input type="range" id="sl-brasDroit" min="0" max="100" value="48" disabled
-                 oninput="sendServo('brasDroit', this.value)">
-          <span class="servo-val" id="sv-brasDroit">48%</span>
-        </div>
-        <div class="servo-row">
-          <span class="servo-label">Bras Gauche</span>
-          <input type="range" id="sl-brasGauche" min="0" max="100" value="50" disabled
-                 oninput="sendServo('brasGauche', this.value)">
-          <span class="servo-val" id="sv-brasGauche">50%</span>
-        </div>
-        <div class="servo-row">
-          <span class="servo-label">Lifter</span>
-          <input type="range" id="sl-lifter" min="0" max="100" value="14" disabled
-                 oninput="sendServo('lifter', this.value)">
-          <span class="servo-val" id="sv-lifter">14%</span>
-        </div>
-        <div class="servo-row">
-          <span class="servo-label">Gripper</span>
-          <input type="range" id="sl-gripper" min="0" max="100" value="0" disabled
-                 oninput="sendServo('gripper', this.value)">
-          <span class="servo-val" id="sv-gripper">0%</span>
-        </div>
-      </div>
-      <div id="act-btns">
-        <button class="act-btn seq" id="btn-seq-init"  onclick="sendSeq('init')"  disabled>&#x21BA; Init</button>
-        <button class="act-btn seq" id="btn-seq-prise" onclick="sendSeq('prise')" disabled>&#x1F9F2; Prise</button>
-        <button class="act-btn" id="btn-ouvrir" onclick="sendServo('gripper','35')" disabled>Gripper &#x25C1;</button>
-        <button class="act-btn" id="btn-fermer" onclick="sendServo('gripper','0')"  disabled>Gripper &#x25B7;</button>
-        <button class="act-btn" id="btn-liftup" onclick="sendServo('lifter','90')"  disabled>Lift &#x2191;</button>
-        <button class="act-btn" id="btn-liftdn" onclick="sendServo('lifter','14')"  disabled>Lift &#x2193;</button>
-      </div>
-    </div>
   </div>
 
-  <!-- ── Logs ── -->
-  <div id="log-panel">
-    <div id="filters">
-      <button class="lvl-btn active-E" id="btn-E" onclick="toggleLevel('E')">E</button>
-      <button class="lvl-btn active-W" id="btn-W" onclick="toggleLevel('W')">W</button>
-      <button class="lvl-btn active-I" id="btn-I" onclick="toggleLevel('I')">I</button>
-      <button class="lvl-btn active-D" id="btn-D" onclick="toggleLevel('D')">D</button>
-      <input id="tag-filter" placeholder="Tag…" oninput="renderLogs()">
-      <button class="tool-btn" onclick="clearLogs()">Effacer</button>
-      <button class="tool-btn active" id="as-btn" onclick="toggleAutoscroll()">&#8595; Auto</button>
-      <button class="tool-btn" id="lidar-abs-btn" onclick="toggleLidarAbs()">&#x25CF; LIDAR terrain</button>
-      <span id="log-count">0 logs</span>
+  <!-- ═══ COLONNE DROITE : onglets ═══════════════════════════════════════ -->
+  <div id="side-col">
+    <div id="tabs">
+      <button class="tab active" data-tab="motion" onclick="switchTab('motion')">MOTION</button>
+      <button class="tab"        data-tab="act"    onclick="switchTab('act')"   >ACTIONNEURS</button>
+      <button class="tab"        data-tab="calib"  onclick="switchTab('calib')" >CALIBRATION</button>
+      <button class="tab"        data-tab="logs"   onclick="switchTab('logs')"  >LOGS</button>
     </div>
-    <div id="logs"></div>
+
+    <div id="tab-content">
+
+      <!-- ── Onglet MOTION ── -->
+      <div id="tab-motion" class="tab-pane active">
+        <div id="motion-panel">
+          <div id="motion-hdr">
+            <span>MOTION</span>
+            <span id="mot-state" class="s-IDLE" style="font-weight:normal;">IDLE</span>
+          </div>
+          <div class="mot-row"><span class="mot-lbl">Phase</span>   <span class="mot-val" id="mot-phase">—</span></div>
+          <div class="mot-row"><span class="mot-lbl">Dist</span>    <span class="mot-val" id="mot-dist">—</span></div>
+          <div class="mot-row"><span class="mot-lbl">Cap</span>     <span class="mot-val" id="mot-cap">—</span></div>
+          <div class="mot-row"><span class="mot-lbl">V L/R</span>   <span class="mot-val" id="mot-vlr">—</span></div>
+          <div class="mot-row"><span class="mot-lbl">Cible</span>   <span class="mot-val" id="mot-tgt">—</span></div>
+        </div>
+
+        <div id="radar-wrap">
+          <canvas id="radar-canvas" width="200" height="200"></canvas>
+          <div id="radar-stats">
+            <div>
+              <div class="rs-label">Plus proche</div>
+              <div class="rs-val" id="rs-closest">— mm</div>
+            </div>
+            <div>
+              <div class="rs-label">Points</div>
+              <div class="rs-val" id="rs-count">—</div>
+            </div>
+            <div>
+              <div class="rs-label">Avant (±30°)</div>
+              <div class="rs-val" id="rs-front">— mm</div>
+            </div>
+            <div>
+              <div class="rs-label">Arrière (±30°)</div>
+              <div class="rs-val" id="rs-back">— mm</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Onglet ACTIONNEURS ── -->
+      <div id="tab-act" class="tab-pane">
+        <div id="act-panel">
+          <div id="act-header">
+            <span>ACTIONNEURS</span>
+            <span id="act-lock" class="locked">&#128274; Hors pré-match</span>
+          </div>
+          <div id="act-sliders">
+            <div class="servo-row">
+              <span class="servo-label">Bras Droit</span>
+              <input type="range" id="sl-brasDroit" min="0" max="100" value="48" disabled
+                     oninput="sendServo('brasDroit', this.value)">
+              <span class="servo-val" id="sv-brasDroit">48%</span>
+            </div>
+            <div class="servo-row">
+              <span class="servo-label">Bras Gauche</span>
+              <input type="range" id="sl-brasGauche" min="0" max="100" value="50" disabled
+                     oninput="sendServo('brasGauche', this.value)">
+              <span class="servo-val" id="sv-brasGauche">50%</span>
+            </div>
+            <div class="servo-row">
+              <span class="servo-label">Lifter</span>
+              <input type="range" id="sl-lifter" min="0" max="100" value="14" disabled
+                     oninput="sendServo('lifter', this.value)">
+              <span class="servo-val" id="sv-lifter">14%</span>
+            </div>
+            <div class="servo-row">
+              <span class="servo-label">Gripper</span>
+              <input type="range" id="sl-gripper" min="0" max="100" value="0" disabled
+                     oninput="sendServo('gripper', this.value)">
+              <span class="servo-val" id="sv-gripper">0%</span>
+            </div>
+          </div>
+          <div id="act-btns">
+            <button class="act-btn seq" id="btn-seq-init"  onclick="sendSeq('init')"  disabled>&#x21BA; Init</button>
+            <button class="act-btn seq" id="btn-seq-prise" onclick="sendSeq('prise')" disabled>&#x1F9F2; Prise</button>
+            <button class="act-btn" id="btn-ouvrir" onclick="sendServo('gripper','35')" disabled>Gripper &#x25C1;</button>
+            <button class="act-btn" id="btn-fermer" onclick="sendServo('gripper','0')"  disabled>Gripper &#x25B7;</button>
+            <button class="act-btn" id="btn-liftup" onclick="sendServo('lifter','90')"  disabled>Lift &#x2191;</button>
+            <button class="act-btn" id="btn-liftdn" onclick="sendServo('lifter','14')"  disabled>Lift &#x2193;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Onglet CALIBRATION ── -->
+      <div id="tab-calib" class="tab-pane" style="gap:4px;">
+        <div class="calib-group">MÉCANIQUE</div>
+        <div class="calib-row">
+          <span class="calib-lbl">&Oslash; enc.</span>
+          <input class="calib-inp" type="number" id="c-encWheelDiam" step="0.01" min="45" max="55" onchange="sendCalib('encWheelDiam',+this.value)">
+          <span class="calib-unit">mm</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">Base enc.</span>
+          <input class="calib-inp" type="number" id="c-encWheelbase" step="0.5" min="170" max="210" onchange="sendCalib('encWheelbase',+this.value)">
+          <span class="calib-unit">mm</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">Base mot.</span>
+          <input class="calib-inp" type="number" id="c-wheelbase" step="0.1" min="130" max="160" onchange="sendCalib('wheelbase',+this.value)">
+          <span class="calib-unit">mm</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">&Oslash; moteur</span>
+          <input class="calib-inp" type="number" id="c-driveWheelDiam" step="0.01" min="52" max="62" onchange="sendCalib('driveWheelDiam',+this.value)">
+          <span class="calib-unit">mm</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">LIDAR offset</span>
+          <input class="calib-inp" type="number" id="c-lidarOffset" step="0.5" min="-15" max="15" onchange="sendCalib('lidarOffset',+this.value)">
+          <span class="calib-unit">&deg;</span>
+        </div>
+
+        <div class="calib-group" style="margin-top:8px;">PID</div>
+        <div class="calib-row">
+          <span class="calib-lbl">KP</span>
+          <input class="calib-inp" type="number" id="c-kp" step="0.05" min="0.1" max="10" onchange="sendCalib('kp',+this.value)">
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">KI</span>
+          <input class="calib-inp" type="number" id="c-ki" step="0.001" min="0" max="0.5" onchange="sendCalib('ki',+this.value)">
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">KD</span>
+          <input class="calib-inp" type="number" id="c-kd" step="0.01" min="0" max="2" onchange="sendCalib('kd',+this.value)">
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">I max</span>
+          <input class="calib-inp" type="number" id="c-iMax" step="10" min="0" max="500" onchange="sendCalib('iMax',+this.value)">
+          <span class="calib-unit">mm/s</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">Stop</span>
+          <input class="calib-inp" type="number" id="c-stopMm" step="0.5" min="1" max="20" onchange="sendCalib('stopMm',+this.value)">
+          <span class="calib-unit">mm</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">V min</span>
+          <input class="calib-inp" type="number" id="c-minSpd" step="0.5" min="2" max="50" onchange="sendCalib('minSpd',+this.value)">
+          <span class="calib-unit">mm/s</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">Vitesse def.</span>
+          <input class="calib-inp" type="number" id="c-defaultSpeed" step="100" min="200" max="5000" onchange="sendCalib('defaultSpeed',+this.value)">
+          <span class="calib-unit">mm/s</span>
+        </div>
+        <div class="calib-row">
+          <span class="calib-lbl">Accel def.</span>
+          <input class="calib-inp" type="number" id="c-defaultAccel" step="100" min="200" max="8000" onchange="sendCalib('defaultAccel',+this.value)">
+          <span class="calib-unit">mm/s&sup2;</span>
+        </div>
+
+        <button class="act-btn" onclick="resetCalib()" style="margin-top:12px;align-self:flex-start;">&#8635; Reset défauts</button>
+      </div>
+
+      <!-- ── Onglet LOGS ── -->
+      <div id="tab-logs" class="tab-pane">
+        <div id="log-filters">
+          <button class="lvl-btn active-E" id="btn-E" onclick="toggleLevel('E')">E</button>
+          <button class="lvl-btn active-W" id="btn-W" onclick="toggleLevel('W')">W</button>
+          <button class="lvl-btn active-I" id="btn-I" onclick="toggleLevel('I')">I</button>
+          <button class="lvl-btn active-D" id="btn-D" onclick="toggleLevel('D')">D</button>
+          <input id="tag-filter" placeholder="Tag…" oninput="renderLogs()">
+          <button class="tool-btn" onclick="clearLogs()">Effacer</button>
+          <button class="tool-btn active" id="as-btn" onclick="toggleAutoscroll()">&#8595; Auto</button>
+          <span id="log-count">0 logs</span>
+        </div>
+        <div id="logs"></div>
+      </div>
+
+    </div>
   </div>
 
 </div>
 
+<script src="poi.js"></script>
 <script>
 // ── Constantes terrain ──────────────────────────────────────────────────────
 const FIELD_W_MM = 3000, FIELD_H_MM = 2000;
-const CVS_W = 600, CVS_H = 400;
-const SX = CVS_W / FIELD_W_MM, SY = CVS_H / FIELD_H_MM;   // 0.2 px/mm
+const CVS_W = 900, CVS_H = 600;
+const SX = CVS_W / FIELD_W_MM, SY = CVS_H / FIELD_H_MM;   // 0.3 px/mm
 
 // ── Constantes radar ────────────────────────────────────────────────────────
-const RDR_CX = 110, RDR_CY = 110, RDR_R = 100;   // centre et rayon du radar (px)
+const RDR_CX = 100, RDR_CY = 100, RDR_R = 90;    // centre et rayon du radar (px)
 const RDR_MAX_MM = 1500;                           // portée affichée (mm)
 const RDR_SCALE  = RDR_R / RDR_MAX_MM;            // px/mm
 // Zone détection obstacle (depuis config.h)
@@ -307,7 +518,10 @@ let logs         = [];
 let visibleLevels= new Set(['E','W','I','D']);
 let autoscroll   = true;
 let startTime    = null;
-let pose         = {x:0, y:0, a:0, state:'—', tm:'?'};
+let pose         = {x:0, y:0, a:0, state:'—', tm:'?', cc:0};
+let motion       = {st:0, ph:0, dist:0, cap:0, vL:0, vR:0, tx:0, ty:0, tt:-9999};
+const MOT_STATE = ['IDLE', 'MOVING', 'HOLD', 'OBSTACLE'];
+const MOT_PHASE = ['NONE', 'ALIGN', 'TRANSLATE', 'FINAL_TURN'];
 let needRender   = false;   // dirty flag pour renderLogs() (incrémental)
 
 // ── Filtres ────────────────────────────────────────────────────────────────
@@ -384,7 +598,7 @@ function esc(s) {
 // Convention après correction : 0°(avant)=droite, 90°(gauche robot)=bas
 // Formule : px = cx + cos(a)*d,  py = cy + sin(a)*d
 function drawRadar(pts) {
-  rdrCtx.clearRect(0, 0, 220, 220);
+  rdrCtx.clearRect(0, 0, 200, 200);
 
   // Fond
   rdrCtx.fillStyle = '#0d0d0d';
@@ -484,42 +698,46 @@ function drawRadar(pts) {
   document.getElementById('rs-back').className      = 'rs-val' + (isAlert(backDist) ? ' alert' : '');
 }
 
-// ── POIs (depuis poi.h) ────────────────────────────────────────────────────
-const POIS = [
-  // Départs
-  {x:375,  y:225,  label:'DY',  name:'startYellow',       cat:'startY'},
-  {x:715,  y:100,  label:'DYn', name:'startYellow_ninja', cat:'startY'},
-  {x:2625, y:225,  label:'DB',  name:'startBlue',         cat:'startB'},
-  {x:2285, y:100,  label:'DBn', name:'startBlue_ninja',   cat:'startB'},
-  // Garde-manger
-  {x:1250, y:550,  label:'P1',  name:'pantry_01', cat:'pantry'},
-  {x:1750, y:550,  label:'P2',  name:'pantry_02', cat:'pantry'},
-  {x:100,  y:1200, label:'P3',  name:'pantry_03', cat:'pantry'},
-  {x:800,  y:1200, label:'P4',  name:'pantry_04', cat:'pantry'},
-  {x:1500, y:1200, label:'P5',  name:'pantry_05', cat:'pantry'},
-  {x:2200, y:1200, label:'P6',  name:'pantry_06', cat:'pantry'},
-  {x:2900, y:1200, label:'P7',  name:'pantry_07', cat:'pantry'},
-  {x:700,  y:1900, label:'P8',  name:'pantry_08', cat:'pantry'},
-  {x:1500, y:1900, label:'P9',  name:'pantry_09', cat:'pantry'},
-  {x:2300, y:1900, label:'P10', name:'pantry_10', cat:'pantry'},
-  // Frigo
-  {x:1100, y:280,  label:'FY1', name:'FridgeYellow_01', cat:'fridgeY'},
-  {x:1350, y:225,  label:'FY2', name:'FridgeYellow_02', cat:'fridgeY'},
-  {x:1900, y:280,  label:'FB1', name:'FridgeBlue_01',   cat:'fridgeB'},
-  {x:1650, y:225,  label:'FB2', name:'FridgeBlue_02',   cat:'fridgeB'},
-  // Stock jaune
-  {x:175,  y:800,  label:'SY1', name:'stockYellow_01',  cat:'stockY'},
-  {x:175,  y:1600, label:'SY2', name:'stockYellow_02',  cat:'stockY'},
-  {x:1100, y:1825, label:'SY3', name:'stockYellow_03',  cat:'stockY'},
-  {x:1150, y:1200, label:'SY4', name:'stockYellow_04',  cat:'stockY'},
-  {x:800,  y:325,  label:'SYn', name:'stockNinjaYellow', cat:'stockY'},
-  // Stock bleu
-  {x:2825, y:800,  label:'SB1', name:'stockBlue_01',   cat:'stockB'},
-  {x:2825, y:1600, label:'SB2', name:'stockBlue_02',   cat:'stockB'},
-  {x:1900, y:1825, label:'SB3', name:'stockBlue_03',   cat:'stockB'},
-  {x:1850, y:1200, label:'SB4', name:'stockBlue_04',   cat:'stockB'},
-  {x:2200, y:325,  label:'SBn', name:'stockNinjaBlue', cat:'stockB'},
-];
+// ── POIs ───────────────────────────────────────────────────────────────────
+// Coordonnées auto-générées depuis src/strategy/poi.h (cf. scripts/sync_poi.py)
+// → injectées par data/poi.js comme `POI_COORDS`
+// Métadonnées d'affichage manuelles (label court + catégorie de couleur)
+const POI_META = {
+  startYellow:       {label:'DY',  cat:'startY'},
+  startYellow_ninja: {label:'DYn', cat:'startY'},
+  startBlue:         {label:'DB',  cat:'startB'},
+  startBlue_ninja:   {label:'DBn', cat:'startB'},
+  pantry_01: {label:'P1',  cat:'pantry'},
+  pantry_02: {label:'P2',  cat:'pantry'},
+  pantry_03: {label:'P3',  cat:'pantry'},
+  pantry_04: {label:'P4',  cat:'pantry'},
+  pantry_05: {label:'P5',  cat:'pantry'},
+  pantry_06: {label:'P6',  cat:'pantry'},
+  pantry_07: {label:'P7',  cat:'pantry'},
+  pantry_08: {label:'P8',  cat:'pantry'},
+  pantry_09: {label:'P9',  cat:'pantry'},
+  pantry_10: {label:'P10', cat:'pantry'},
+  FridgeYellow_01: {label:'FY1', cat:'fridgeY'},
+  FridgeYellow_02: {label:'FY2', cat:'fridgeY'},
+  FridgeBlue_01:   {label:'FB1', cat:'fridgeB'},
+  FridgeBlue_02:   {label:'FB2', cat:'fridgeB'},
+  stockYellow_01:  {label:'SY1', cat:'stockY'},
+  stockYellow_02:  {label:'SY2', cat:'stockY'},
+  stockYellow_03:  {label:'SY3', cat:'stockY'},
+  stockYellow_04:  {label:'SY4', cat:'stockY'},
+  stockNinjaYellow:{label:'SYn', cat:'stockY'},
+  stockBlue_01:    {label:'SB1', cat:'stockB'},
+  stockBlue_02:    {label:'SB2', cat:'stockB'},
+  stockBlue_03:    {label:'SB3', cat:'stockB'},
+  stockBlue_04:    {label:'SB4', cat:'stockB'},
+  stockNinjaBlue:  {label:'SBn', cat:'stockB'},
+};
+// Fusion : un POI ne s'affiche que s'il a une entrée dans POI_META
+const POIS = (typeof POI_COORDS === 'object')
+  ? Object.entries(POI_COORDS)
+      .filter(([name]) => POI_META[name])
+      .map(([name, [x, y]]) => ({name, x, y, ...POI_META[name]}))
+  : [];
 const POI_STYLE = {
   startY:  {fill:'rgba(255,212,59,0.85)',  stroke:'#b8960c', r:5},
   startB:  {fill:'rgba(116,192,252,0.85)', stroke:'#1c7ed6', r:5},
@@ -556,24 +774,29 @@ const cursorCoord = document.getElementById('cursor-coord');
 
 document.getElementById('field-canvas').addEventListener('mousemove', e => {
   const rect = e.target.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-
-  // Coordonnées terrain
-  const tx = Math.round(mx / SX), ty = Math.round(my / SY);
+  // Souris en pixels DISPLAY (utilisés pour position tooltip)
+  const dispX = e.clientX - rect.left;
+  const dispY = e.clientY - rect.top;
+  // Conversion DISPLAY → mm (terrain)
+  const tx = Math.round(dispX / rect.width  * FIELD_W_MM);
+  const ty = Math.round(dispY / rect.height * FIELD_H_MM);
   cursorCoord.textContent = `X=${tx} Y=${ty}`;
 
-  // Survol POI (seuil 10px)
+  // Survol POI : POI en DISPLAY = (p.x/FIELD_W * rect.width)
+  const sxDisp = rect.width  / FIELD_W_MM;
+  const syDisp = rect.height / FIELD_H_MM;
+  const hitR2  = 12 * 12;   // rayon clic 12 px display
   let found = null;
   for (const p of POIS) {
-    const dx = mx - p.x * SX, dy = my - p.y * SY;
-    if (dx * dx + dy * dy < 100) { found = p; break; }
+    const dx = dispX - p.x * sxDisp;
+    const dy = dispY - p.y * syDisp;
+    if (dx * dx + dy * dy < hitR2) { found = p; break; }
   }
   if (found) {
     tooltip.style.display = 'block';
     const TW = 165, TH = 46;
-    const tipLeft = (mx + 12 + TW > CVS_W) ? mx - TW - 8 : mx + 12;
-    const tipTop  = (my - TH - 6  < 0)     ? my + 8       : my - TH - 6;
+    const tipLeft = (dispX + 12 + TW > rect.width)  ? dispX - TW - 8 : dispX + 12;
+    const tipTop  = (dispY - TH - 6  < 0)            ? dispY + 8       : dispY - TH - 6;
     tooltip.style.left = tipLeft + 'px';
     tooltip.style.top  = tipTop  + 'px';
     tooltip.innerHTML  = '<b>' + found.name + '</b><br>X=' + found.x + '&nbsp;Y=' + found.y + ' mm';
@@ -586,6 +809,90 @@ document.getElementById('field-canvas').addEventListener('mouseleave', () => {
   tooltip.style.display  = 'none';
   cursorCoord.textContent = '—';
 });
+
+// ── Click + drag sur le terrain → goto (x, y[, theta]) ────────────────────
+// mousedown → capture point cible. drag → preview rouge avec angle.
+// mouseup → envoie ; si drag < 8 px on envoie sans theta (clic simple).
+let clickFlash = null;        // {x, y, t0} pour anim courte du marqueur
+let dragState  = null;        // {sx, sy, mx, my, sxClient, syClient} pendant le drag
+const DRAG_THRESHOLD_PX = 8;
+
+function canClickField() {
+  return pose.cc === 1;
+}
+
+document.getElementById('field-canvas').addEventListener('mousedown', e => {
+  if (!canClickField())  return;
+  if (e.button !== 0)    return;   // bouton gauche uniquement
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const rect = e.target.getBoundingClientRect();
+  const x = Math.round((e.clientX - rect.left) / rect.width  * FIELD_W_MM);
+  const y = Math.round((e.clientY - rect.top)  / rect.height * FIELD_H_MM);
+  dragState = {sx:x, sy:y, mx:x, my:y, sxClient:e.clientX, syClient:e.clientY};
+  e.preventDefault();
+  drawPose();
+});
+
+// Mouse move : utilisé en plus du tooltip pour update le drag preview
+window.addEventListener('mousemove', e => {
+  if (!dragState) return;
+  const cvs = document.getElementById('field-canvas');
+  const rect = cvs.getBoundingClientRect();
+  // Clamp sur les bornes du terrain (Y et X) — anglemarche même hors canvas
+  let mx = (e.clientX - rect.left) / rect.width  * FIELD_W_MM;
+  let my = (e.clientY - rect.top)  / rect.height * FIELD_H_MM;
+  dragState.mx = Math.round(mx);
+  dragState.my = Math.round(my);
+  drawPose();
+});
+
+window.addEventListener('mouseup', e => {
+  if (!dragState) return;
+  if (e.button !== 0) { dragState = null; drawPose(); return; }
+  const dx = e.clientX - dragState.sxClient;
+  const dy = e.clientY - dragState.syClient;
+  const dragPx = Math.sqrt(dx*dx + dy*dy);
+  const msg = {type:'goto', x:dragState.sx, y:dragState.sy};
+  if (dragPx > DRAG_THRESHOLD_PX) {
+    // Theta dans repère robot (0°=Est, +CCW). Y+ canvas = Y+ terrain (vers le bas).
+    // robot Y+ = sud, donc theta = atan2(-(my-sy), mx-sx)
+    const ddx = dragState.mx - dragState.sx;
+    const ddy = dragState.my - dragState.sy;
+    msg.t = Math.round(Math.atan2(-ddy, ddx) * 180 / Math.PI);
+  }
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  clickFlash = {x:dragState.sx, y:dragState.sy, t0:Date.now()};
+  dragState = null;
+  drawPose();
+});
+
+// Annule le drag si la fenêtre perd le focus
+window.addEventListener('blur', () => {
+  if (dragState) { dragState = null; drawPose(); }
+});
+
+// ── Motion debug panel ─────────────────────────────────────────────────────
+function updateMotionPanel() {
+  const stateName = MOT_STATE[motion.st] || '?';
+  const phaseName = MOT_PHASE[motion.ph] || '?';
+  const stEl = document.getElementById('mot-state');
+  stEl.textContent = stateName;
+  stEl.className   = 's-' + stateName;
+  document.getElementById('mot-phase').textContent = phaseName;
+  document.getElementById('mot-dist').textContent  =
+    motion.st === 0 ? '—' : motion.dist.toFixed(0) + ' mm';
+  document.getElementById('mot-cap').textContent   =
+    motion.st === 0 ? '—' : motion.cap.toFixed(0) + ' mm/s';
+  document.getElementById('mot-vlr').textContent   =
+    motion.st === 0 ? '—' : motion.vL.toFixed(0) + ' / ' + motion.vR.toFixed(0);
+  if (motion.st === 0) {
+    document.getElementById('mot-tgt').textContent = '—';
+  } else {
+    const thetaStr = motion.tt < -9000 ? '—' : motion.tt.toFixed(1) + '°';
+    document.getElementById('mot-tgt').textContent =
+      motion.tx.toFixed(0) + ', ' + motion.ty.toFixed(0) + ', ' + thetaStr;
+  }
+}
 
 // ── Terrain ────────────────────────────────────────────────────────────────
 function drawPose() {
@@ -601,6 +908,98 @@ function drawPose() {
       ctx.beginPath();
       ctx.arc(px2, py2, 2.5, 0, 2 * Math.PI);
       ctx.fill();
+    }
+  }
+
+  // Preview pendant le drag (cible + flèche orientation)
+  if (dragState) {
+    const sx = dragState.sx * SX, sy = dragState.sy * SY;
+    const mx = dragState.mx * SX, my = dragState.my * SY;
+    // Cercle au point de cible
+    ctx.beginPath();
+    ctx.arc(sx, sy, 10, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255,80,80,0.95)';
+    ctx.lineWidth   = 2.5;
+    ctx.stroke();
+    // Croix centrale
+    ctx.beginPath();
+    ctx.moveTo(sx - 6, sy); ctx.lineTo(sx + 6, sy);
+    ctx.moveTo(sx, sy - 6); ctx.lineTo(sx, sy + 6);
+    ctx.strokeStyle = 'rgba(255,80,80,0.95)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    // Flèche du point vers le curseur (orientation)
+    const ddx = mx - sx, ddy = my - sy;
+    const len = Math.sqrt(ddx*ddx + ddy*ddy);
+    if (len > 8) {
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(mx, my);
+      ctx.strokeStyle = 'rgba(255,80,80,0.85)';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+      // Pointe flèche
+      const ang = Math.atan2(ddy, ddx);
+      const ahL = Math.min(12, len * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(mx, my);
+      ctx.lineTo(mx - Math.cos(ang - 0.4) * ahL, my - Math.sin(ang - 0.4) * ahL);
+      ctx.moveTo(mx, my);
+      ctx.lineTo(mx - Math.cos(ang + 0.4) * ahL, my - Math.sin(ang + 0.4) * ahL);
+      ctx.strokeStyle = 'rgba(255,80,80,0.95)';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+      // Label degré près de la pointe
+      const thetaDeg = Math.round(Math.atan2(-ddy, ddx) * 180 / Math.PI);
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = 'rgba(255,80,80,0.95)';
+      ctx.fillText(thetaDeg + '°', mx + 8, my - 4);
+    }
+  }
+
+  // Flash temporaire du click utilisateur (anim 600 ms)
+  if (clickFlash) {
+    const age = Date.now() - clickFlash.t0;
+    if (age < 600) {
+      const fx = clickFlash.x * SX, fy = clickFlash.y * SY;
+      const alpha = 1 - age / 600;
+      const r = 4 + age * 0.05;   // grandit de 4 à ~34 px
+      ctx.beginPath();
+      ctx.arc(fx, fy, r, 0, 2 * Math.PI);
+      ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.9})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      requestAnimationFrame(drawPose);
+    } else {
+      clickFlash = null;
+    }
+  }
+
+  // Marqueur cible — visible si state != IDLE
+  if (motion.st !== 0) {
+    const tx = motion.tx * SX, ty = motion.ty * SY;
+    // Cercle creux vert
+    ctx.beginPath();
+    ctx.arc(tx, ty, 9, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(105,219,124,0.95)';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+    // Croix centrale
+    ctx.beginPath();
+    ctx.moveTo(tx - 6, ty); ctx.lineTo(tx + 6, ty);
+    ctx.moveTo(tx, ty - 6); ctx.lineTo(tx, ty + 6);
+    ctx.strokeStyle = 'rgba(105,219,124,0.95)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    // Flèche theta (si imposé)
+    if (motion.tt > -9000) {
+      const r = motion.tt * Math.PI / 180;
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx + Math.cos(r) * 16, ty - Math.sin(r) * 16);
+      ctx.strokeStyle = 'rgba(105,219,124,0.8)';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
     }
   }
 
@@ -671,6 +1070,8 @@ function connect() {
       else              { badge.textContent = '■ BLEU';  badge.className = 'blue';   }
       // Contrôle actionneurs
       setActControl(canControl());
+      // Curseur cliquable sur le terrain
+      document.getElementById('field-canvas').classList.toggle('clickable', canClickField());
 
     } else if (d.type === 'lidar') {
       lastLidarTime = Date.now();
@@ -686,6 +1087,14 @@ function connect() {
       updateSlider('lifter',     d.li);
       updateSlider('gripper',    d.gr);
 
+    } else if (d.type === 'calib_state') {
+      updateCalibUI(d);
+
+    } else if (d.type === 'motion') {
+      motion = d;
+      updateMotionPanel();
+      drawPose();   // redessine pour le marqueur cible
+
     } else if (d.l) {
 
       logs.push(d);
@@ -700,7 +1109,7 @@ function connect() {
 // ── Radar timeout — grise si pas de données depuis >2s ─────────────────────
 setInterval(() => {
   if (lastLidarTime > 0 && Date.now() - lastLidarTime > 2000) {
-    rdrCtx.clearRect(0, 0, 220, 220);
+    rdrCtx.clearRect(0, 0, 200, 200);
     rdrCtx.fillStyle = '#0d0d0d';
     rdrCtx.beginPath();
     rdrCtx.arc(RDR_CX, RDR_CY, RDR_R, 0, 2 * Math.PI);
@@ -769,6 +1178,52 @@ function updateSlider(id, val) {
   if (isNaN(val) || val < 0) return;
   document.getElementById('sl-' + id).value = val;
   document.getElementById('sv-' + id).textContent = Math.round(val) + '%';
+}
+
+// ── Calibration ────────────────────────────────────────────────────────────
+const CALIB_DEFAULTS = {
+  encWheelDiam:50.58, encWheelbase:189.0, wheelbase:145.60,
+  driveWheelDiam:57.53, lidarOffset:0.0,
+  kp:1.8, ki:0.01, kd:0.2, iMax:100.0,
+  stopMm:5.0, minSpd:8.0, defaultSpeed:2000.0, defaultAccel:1500.0
+};
+
+// ── Onglets ────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + name);
+  });
+}
+
+function sendCalib(key, val) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({type:'calib', key:key, val:val}));
+}
+
+function resetCalib() {
+  for (const [key, val] of Object.entries(CALIB_DEFAULTS)) {
+    const el = document.getElementById('c-' + key);
+    if (el) el.value = val;
+    sendCalib(key, val);
+  }
+}
+
+function updateCalibUI(d) {
+  const map = {
+    encWheelDiam:d.encWheelDiam, encWheelbase:d.encWheelbase,
+    wheelbase:d.wheelbase, driveWheelDiam:d.driveWheelDiam,
+    lidarOffset:d.lidarOffset,
+    kp:d.kp, ki:d.ki, kd:d.kd, iMax:d.iMax,
+    stopMm:d.stopMm, minSpd:d.minSpd,
+    defaultSpeed:d.defaultSpeed, defaultAccel:d.defaultAccel
+  };
+  for (const [key, val] of Object.entries(map)) {
+    const el = document.getElementById('c-' + key);
+    if (el && val !== undefined) el.value = val;
+  }
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────

@@ -19,7 +19,10 @@ LIDAR : LD06 (série 230400 baud). Actionneurs I2C : PCA9685 (servos) + PCF8574 
 ```text
 src/
 ├── main.cpp                  # Setup, loop, tâches FreeRTOS, instances globales
-├── config.h                  # TOUTES les constantes matériel/algo
+├── config.h                  # Constantes matériel/algo (compile-time)
+├── live_config.h/cpp         # gCalib : paramètres modifiables en RAM via Web UI
+├── credentials.h             # WiFi SSID/pass (git-ignoré)
+├── state_cmd.h               # Enum StateCmd (commandes UI → strategy)
 ├── log.h                     # Macros LOG_E/W/I/D (Serial.printf filtré par LOG_LEVEL)
 ├── utils.h                   # wait(ms) — délai FreeRTOS portable
 ├── display/
@@ -33,7 +36,9 @@ src/
 ├── motion/
 │   ├── step_control.h/cpp    # Contrôle moteurs + dead reckoning (pose X/Y/theta)
 │   ├── encoder.h/cpp         # QuadEncoder : PCNT hardware ESP32-S3
-│   └── stepper_ctrl.h/cpp    # DEAD CODE — ne pas utiliser
+│   └── motion_ctrl.h/cpp     # MotionController : tâche PID continue (taskMotionControl)
+├── wifi/
+│   └── log_server.h/cpp      # WebSocket + HTTP server (UI, logs, télémétrie)
 ├── actuators/
 │   ├── pca9685.h/cpp         # Driver PCA9685 I2C (16 canaux PWM servo)
 │   ├── pcf8574.h/cpp         # Driver PCF8574 I2C (8 I/O numériques)
@@ -41,9 +46,18 @@ src/
 │   ├── actuators.h           # Déclarations instances + séquences — À ÉDITER
 │   └── actuators.cpp         # Définitions + séquences d'actionneurs — À ÉDITER
 └── strategy/
-    ├── robot.h/cpp           # API haut niveau Robot
+    ├── robot.h/cpp           # API haut niveau Robot (wrappers de MotionController)
     ├── poi.h                 # Points d'intérêt (Vec2 + namespace POI)
-    ├── strategy.h/cpp        # Fonctions stratégie utilisateur — À ÉDITER
+    └── strategy.h/cpp        # Fonctions stratégie utilisateur — À ÉDITER
+
+data/
+├── index.html                # UI web (layout 2 colonnes + onglets)
+├── field.jpg                 # Image fond de terrain
+└── poi.js                    # AUTO-GÉNÉRÉ depuis poi.h (cf. scripts/sync_poi.py)
+
+scripts/
+└── sync_poi.py               # Génère data/poi.js depuis src/strategy/poi.h
+                              # (lancé par PIO en extra_scripts pré-build)
 ```
 
 ---
@@ -169,19 +183,22 @@ Odométrie : `_x += dDist*cos(θ)`, `_y -= dDist*sin(θ)` (sin inversé pour Y-d
 ## Tâches FreeRTOS
 
 ```text
-Core 0 : taskLidar    (prio 2) — lecture UART LD06, update buffer scan
-Core 0 : taskEncoders (prio 3) — update() 200Hz + odométrie différentielle complète
-                                  gère le rollover PCNT ESP32-S3
-Core 1 : taskStrategy (prio 2) — pré-match + match + chrono + actionneurs
-Core 1 : taskDisplay  (prio 1) — rendu OLED 2 Hz
-Core 1 : loop()               — ledsUpdateLidar() 100ms
-                                 Teleplot LIDAR 200ms (WAIT_INIT seulement)
-                                 Teleplot pose 500ms (match seulement)
-                                 Log match 500ms (LOG_LEVEL >= 3)
+Core 0 : taskLidar          (prio 2) — lecture UART LD06, update buffer scan
+Core 0 : taskEncoders       (prio 3, 200 Hz) — update() + odométrie différentielle
+                                                gère le rollover PCNT ESP32-S3
+Core 1 : taskStrategy       (prio 2) — pré-match + match + chrono + actionneurs
+Core 1 : taskMotionControl  (prio 3, 50 Hz) — PID continu, exécute les Target
+                                              postés par robot.setTarget(...)
+Core 1 : taskDisplay        (prio 1) — rendu OLED 2 Hz
+Core 1 : LogServer task     (prio 1) — broadcast WebSocket (pose, lidar, motion...)
+Core 1 : loop()                       — ledsUpdateLidar() 100ms
+                                         WiFi telemetry 200ms (pose, actuateurs, motion, cc)
+                                         Field click poll → robot.setTarget()
+                                         Log match 500ms (LOG_LEVEL >= 3)
 ```
 
-`taskEncoders` calcule en continu `gDisplay.enc_pose_x/y/theta` utilisés par `gotoXYenc`.
-Le mécanisme `enc_reset_pending` permet à `setPosition()` de synchroniser la pose encodeur.
+- `taskEncoders` calcule en continu `gDisplay.enc_pose_x/y/theta` utilisés par MotionController. Le mécanisme `enc_reset_pending` permet à `setPosition()` de synchroniser la pose encodeur.
+- `taskMotionControl` est la **nouvelle architecture** : tâche permanente qui consomme les cibles via une struct partagée (portMUX). Voir section dédiée.
 
 ---
 
@@ -212,23 +229,32 @@ Après stratégie :
 ## API Robot (strategy/robot.h)
 
 ```cpp
-// ── Déplacements step-based (dead reckoning) ──────────────────────────────
+// ── Déplacements step-based (dead reckoning, open-loop) ───────────────────
 void go(float mm);                    // relatif, positif = avant
 bool goStall(float mm, uint32_t timeoutMs = 3000); // go + détection blocage encodeurs
 void turn(float deg);                 // relatif, positif = gauche (CCW)
 void gotoXY(float x, float y);
 void gotoXY(float x, float y, float arrival_deg);
 void gotoXY(Vec2 poi);                // surcharge POI
-void gotoXY(Vec2 poi, float arrival_deg);
 
-// ── Navigation asservie encodeurs (double PID position) ───────────────────
+// ── Navigation asservie encodeurs (via MotionController) ──────────────────
+// Ces wrappers historiques sont bloquants : ils appellent setTarget()
+// puis waitArrived(). Backward-compatible avec l'ancien _runWheelPID.
 void goPID(float mm);                 // translation asservie
 void turnPID(float deg);              // rotation asservie
 void gotoXYenc(float x, float y);
-void gotoXYenc(float x, float y, float arrival_deg);
+void gotoXYenc(float x, float y, float arrival_deg, bool backward = false);
 void gotoXYenc(Vec2 poi);             // surcharge POI
-void gotoXYenc(Vec2 poi, float arrival_deg);
 void setEncoders(QuadEncoder *l, QuadEncoder *r);
+
+// ── API motion non-bloquante (NOUVEAU, via taskMotionControl) ─────────────
+void setTarget(float x_mm, float y_mm);                            // sans theta
+void setTarget(float x_mm, float y_mm, float arrival_deg,
+               bool backward = false);                              // avec theta
+void holdPosition();                  // → mode HOLD (cible = pose courante)
+void releaseMotion();                 // → mode IDLE (moteurs libres)
+bool waitArrived(float blendMm = 0.0f);  // bloquant, surveille match/endgame
+MotionController::State getMotionState() const;
 
 // ── Pose ──────────────────────────────────────────────────────────────────
 void setPosition(float x, float y, float theta_deg);
@@ -239,15 +265,14 @@ void  setSpeed(float mmS);
 void  setAcceleration(float mmS2);
 void  setSpeedPct(float speedPct, float accelPct = -1.0f); // % de DEFAULT_*
 void  resetSpeed();                   // revient à DEFAULT_SPEED/ACCEL_MMS
-float getSpeed()        const;
-float getAcceleration() const;
 
 // ── Obstacle ──────────────────────────────────────────────────────────────
 void enableObstacle() / disableObstacle();
-// Obstacle désactivé automatiquement pendant turnPID (direction invalide pendant rotation)
+void setDetectMode(DetectMode m);     // SIMPLE | WALL_FILTERED — propagé au MotionController
 
 // ── Moteurs ───────────────────────────────────────────────────────────────
 void disableMotors() / enableMotors();
+// disableMotors() libère aussi MotionController (→ IDLE)
 
 // ── Chrono ────────────────────────────────────────────────────────────────
 void startMatch();
@@ -259,12 +284,70 @@ bool isMatchOver() const;   // >= MATCH_DURATION_MS
 ### gotoXYenc — comportement
 
 ```text
-1. Turn vers la cible (ou sens inverse si goBack = angle > 90°)
-2. Go en ligne droite jusqu'à la cible (PID double encodeurs)
-3. Turn vers arrival_deg (seulement si spécifié)
+1. setTarget(x, y, arrival_deg, backward)  → MotionController prend la cible
+2. waitArrived(0)                          → bloque jusqu'à convergence
+3. MotionController exécute en interne : ALIGN → TRANSLATE → FINAL_TURN
 ```
 
-La détection d'obstacle dans `_runWheelPID` : stop → `_waitObstacleClear` → continue vers même cible.
+La détection d'obstacle est gérée par MotionController pendant TRANSLATE : stop → recul de OBS_BACKUP_MM → attente dégagement → reprise vers la même cible.
+
+---
+
+## MotionController (motion/motion_ctrl.h)
+
+Tâche FreeRTOS continue (50 Hz, Core 1, prio 3) qui pilote les moteurs vers une cible (X, Y, θ).
+
+### États
+
+```text
+IDLE     → moteurs libres, tâche inactive
+MOVING   → PID actif vers cible, sous-phases ALIGN → TRANSLATE → FINAL_TURN
+HOLD     → PID maintien position (cible = pose au moment du holdPosition)
+OBSTACLE → arrêté, attente dégagement avant reprise de la phase courante
+```
+
+### Phases internes (MOVING)
+
+```text
+ALIGN       → rotation sur place vers la direction de la cible
+              (skip si déjà aligné < 3° ou dist < 1mm)
+TRANSLATE   → translation vers (X, Y) avec PID wheel-level
+              (détection obstacle active si Target.obstacleEn = true)
+FINAL_TURN  → rotation finale vers theta (skip si Target.theta_deg = NAN)
+```
+
+### API
+
+```cpp
+struct Target {
+    float x_mm, y_mm;
+    float theta_deg = NAN;       // NaN = pas de contrainte orientation
+    float speed = 0;             // 0 → gCalib.defaultSpeed
+    float accel = 0;             // 0 → gCalib.defaultAccel
+    float stopMm = 0;            // 0 → gCalib.stopMm
+    bool  backward = false;
+    bool  obstacleEn = true;
+};
+
+// API non-bloquante
+void setTarget(const Target& t);
+void holdPosition();
+void release();
+
+// API bloquante (basée sur seq pour éviter race conditions)
+bool waitArrived(float blendMm = 0.0f);
+
+// Getters debug
+State getState() / Phase getPhase() / DistMm() / SpeedCap() / CmdL/R() / Target*()
+uint32_t getUserSeq() / getDoneSeq()  // pour la synchro waitArrived
+```
+
+### Thread safety
+
+- Cible partagée (`_userTgt`) protégée par `portMUX_TYPE`
+- Compteurs `_userSeq` (incrémente à chaque setTarget) et `_doneSeq` (signalé par _completeTarget)
+- `waitArrived` capture `expected = userSeq` au début, attend `doneSeq == expected` OU `userSeq != expected` (préempté)
+- ⚠️ **Ne PAS** se fier à `state == IDLE` dans waitArrived — état initial avant que la tâche pique le nouveau seq. Le bug a été corrigé.
 
 ### setSpeedPct et vitesse
 
@@ -350,19 +433,23 @@ Symétrie bleu/jaune : `x_bleu = TABLE_WIDTH - x_jaune`. ANGLE_WEST↔EAST, NORT
 
 ---
 
-## Double PID position encodeurs (_runWheelPID)
+## Double PID position encodeurs (`MotionController::_runPidStep`)
 
-Chaque roue a son propre PID : `erreur_position → vitesse_moteur`.
+Le PID wheel-level est désormais intégré à `MotionController` (1 itération = 1 tick de la tâche, 20 ms).
 
 ```text
 outL = KP×eL + KI∫eL + KD×deL/dt   (mm/s, saturé à ±speed)
 outR = KP×eR + KI∫eR + KD×deR/dt
 → setMotorVelocities(outL, outR)    // vitesse signée, gère direction par roue
 Arrêt : avg = (|eL|+|eR|)/2 ≤ stopMm
+Profil de freinage : speedCap = sqrt(2 × accel × max(0, |e| − stopMm))
+Speed cap ramp : speedCap = min(speedCap + accel × dt, target_speed)
+                 → reset à gCalib.minSpd au début de chaque phase
+                 → c'est ce qui empêche le blend (cf. roadmap 1.2)
 ```
 
-`turnPID` utilise `stopMm = ENC_P1_STOP_DEG × ENC_WHEELBASE_MM × π / 360`.
-`goStall` détecte le blocage : delta encodeur < 0.1mm/poll × 3 polls → stop, retourne true.
+Phases ALIGN et FINAL_TURN utilisent `stopMm = ENC_P1_STOP_DEG × ENC_WHEELBASE_MM × π / 360`.
+`goStall` (legacy, dans `robot.cpp`) détecte le blocage : delta encodeur < 0.1mm/poll × 3 polls → stop, retourne true.
 
 ---
 
@@ -428,17 +515,76 @@ volatile float      enc_reset_x, enc_reset_y, enc_reset_theta_deg;
 
 4. **taskEncoders sur Core 0** (prio 3) : garantit `update()` toutes les 5ms. Ne pas déplacer dans `loop()`.
 
-5. **ENC_WHEELBASE_MM ≠ WHEELBASE_MM** : 189mm vs 145.6mm. `turnPID` utilise ENC_WHEELBASE_MM pour les cibles encodeurs. `startTurn` utilise WHEELBASE_MM pour les pas.
+5. **ENC_WHEELBASE_MM ≠ WHEELBASE_MM** : 189mm vs 145.6mm. `MotionController` utilise `gCalib.encWheelbase` pour les cibles encodeurs (phases ALIGN/FINAL_TURN). `startTurn` utilise `gCalib.wheelbase` pour les pas.
 
 6. **setPosition() est bloquant** : attend que `taskEncoders` applique le reset (max 5ms). Ne pas appeler depuis une ISR.
 
-7. **Obstacle désactivé pendant turnPID** : la direction de détection serait fausse pendant une rotation (theta dead reckoning figé).
+7. **Obstacle désactivé pendant ALIGN et FINAL_TURN** : dans `MotionController::_initAlignPhase/_initFinalTurnPhase`, `_phaseObstacleEn = false`. La direction de détection serait fausse pendant une rotation.
 
 8. **_nearEndMode** : appeler `robot.startNearEnd()` avant `runNearEndYellow/Blue()` pour que les mouvements fonctionnent après 80s.
 
 9. **LOG_LEVEL=0 en compétition** : met dans `config.h`. Élimine tous les Serial.printf de log à la compilation.
 
-10. **stepper_ctrl.cpp** : fichier mort, ne pas instancier `MotionController` — contient des bugs (mauvais wheelbase, signe Y inversé, conflits PCNT).
+10. **`waitArrived` utilise des seq, PAS l'état** : ne PAS ajouter `if (state == IDLE) return true` dans `waitArrived` — l'état initial est IDLE avant que la tâche pique le nouveau seq. Confond preempt et complétion.
+
+11. **gCalib vs config.h** : `gCalib` contient les paramètres modifiables à chaud (PID, vitesses, géométrie). Initialisé depuis les `#define` de `config.h` au boot. La Web UI peut les modifier en RAM. Une fois validés, **les copier dans `config.h`** pour la persistance.
+
+12. **setSpeedPct** : multiplie `gCalib.defaultSpeed/defaultAccel`, pas les constantes `DEFAULT_*_MMS` directement. La calibration live modifie donc le comportement de `setSpeedPct`.
+
+13. **scripts/sync_poi.py** : invoqué automatiquement par PIO en `pre:` extra_script. Régénère `data/poi.js` depuis `src/strategy/poi.h`. Ajouter un POI : éditer **uniquement** `poi.h`, puis ajouter une entrée dans `POI_META` (index.html) pour le label/couleur.
+
+---
+
+## Live config (live_config.h/cpp)
+
+Struct `gCalib` (globale) — paramètres modifiables en RAM via la Web UI ou les commandes WebSocket `{"type":"calib","key":"...","val":...}`. Initialisée au boot depuis les `#define` de `config.h`.
+
+```cpp
+struct LiveCalib {
+    // Mécanique
+    float encWheelDiam, encWheelbase, wheelbase, driveWheelDiam, lidarOffsetDeg;
+    float stepsPerMm, mmPerCount;          // dérivés (recalculés)
+    // PID
+    float kp, ki, kd, iMax, stopMm, minSpd, defaultSpeed, defaultAccel;
+};
+extern LiveCalib gCalib;
+```
+
+Le code lit `gCalib.kp` au lieu de `ENC_P1_KP` etc. Une fois calibré sur le robot via UI, copier les valeurs validées dans `config.h` pour la persistance (sinon perdues au reboot).
+
+---
+
+## Web UI (data/index.html, log_server.cpp)
+
+Layout 2 colonnes :
+
+- **Gauche** : terrain canvas 900×600 (responsive, aspect 3/2) + toolbar (LIDAR terrain toggle, coords souris) + barre pose + panneau ROBOT (7 boutons d'état)
+- **Droite (440 px)** : onglets MOTION / ACTIONNEURS / CALIBRATION / LOGS
+
+### Click + drag goto (sécurisé)
+
+- Clic simple → `goto(x, y)` sans contrainte d'orientation
+- Clic-drag-relâche → `goto(x, y, θ)` avec flèche de preview rouge
+- Autorisé uniquement après init et hors match en cours (`cc:1` dans pose WS)
+- Message WS : `{"type":"goto","x":1234,"y":567,"t":90}` (clé `t` optionnelle)
+
+### Boutons ROBOT (7)
+
+```text
+⏹ Stop moteurs    | ⚡ Activer moteurs | ↩ WAIT_INIT
+▶ Lancer Init     | ▶ Lancer Match    | ⏱ Stop match | ↺ Relancer Match
+```
+
+Commandes via `StateCmd` enum (`src/state_cmd.h`) → `gStateCmd` queue → consommée par `taskStrategy`.
+
+### Marqueur cible + Motion debug
+
+- Cible MotionController affichée sur le terrain (cercle vert + flèche θ si imposé)
+- Panneau MOTION : état/phase/dist/cap/V L/R/cible — mise à jour 200 ms
+
+### POI auto-générés
+
+`data/poi.js` régénéré par `scripts/sync_poi.py` à chaque build (PIO `pre:` extra_script). Les coordonnées viennent de `poi.h`. Les métadonnées d'affichage (label court, catégorie) restent dans `index.html::POI_META`.
 
 ---
 
@@ -446,15 +592,19 @@ volatile float      enc_reset_x, enc_reset_y, enc_reset_theta_deg;
 
 | Objectif | Fichier(s) |
 | --- | --- |
-| Calibrer le robot | `config.h` |
+| Calibrer le robot (compile-time) | `config.h` |
+| Calibrer à chaud (RAM, via UI) | UI web → `gCalib` (puis report dans `config.h`) |
 | Écrire la stratégie | `strategy/strategy.cpp` |
 | Ajouter un servo / séquence | `actuators/actuators.h` + `actuators.cpp` |
-| Modifier la détection obstacle | `strategy/robot.cpp` |
+| Modifier la détection obstacle | `motion/motion_ctrl.cpp` (`_obstacleSimple/_obstacleWallFiltered`) |
 | Zones aveugles LIDAR | `config.h` (LIDAR_BLIND_*) |
 | Changer l'affichage OLED | `display/oled.cpp` |
 | Modifier le comportement des LEDs | `io/leds.cpp` |
 | Ajouter une commande Robot | `strategy/robot.h` + `robot.cpp` |
-| Modifier la cinématique | `motion/step_control.cpp` |
+| Modifier le PID / phases motion | `motion/motion_ctrl.cpp` |
+| Modifier la cinématique step-based | `motion/step_control.cpp` |
 | Calibration géométrique | `strategy/strategy.cpp` + `main.cpp` |
 | Verbosité des logs | `config.h` → `LOG_LEVEL` |
-| Ajouter des POI | `strategy/poi.h` |
+| Ajouter des POI | `strategy/poi.h` (UI mis à jour auto via sync_poi.py) |
+| Modifier l'UI web | `data/index.html` (+ `log_server.cpp` pour nouveaux messages WS) |
+| Ajouter une commande UI → robot | `state_cmd.h` + `log_server.cpp::_handleWsMsg` + `main.cpp::taskStrategy` |

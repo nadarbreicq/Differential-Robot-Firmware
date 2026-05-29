@@ -102,34 +102,54 @@ Le **switch d'équipe** peut être changé à tout moment avant l'étape 1.
 ### Commandes robot
 
 ```cpp
-// ─── Déplacements ───────────────────────────────────────────────────────────
+// ─── Déplacements step-based (open-loop, dead reckoning) ────────────────────
 robot.go(500);              // avance 500 mm (négatif = recule)
 robot.turn(90);             // tourne 90° à gauche (négatif = droite)
 robot.gotoXY(1000, 500);    // va aux coordonnées absolues
 robot.gotoXY(1000, 500, 0); // idem avec cap final 0°
+robot.goStall(-500);        // recule + stoppe sur blocage (plaquage bordure)
+
+// ─── Déplacements asservis encodeurs (closed-loop, recommandé) ──────────────
+robot.goPID(500);                       // translation asservie
+robot.turnPID(90);                      // rotation asservie
+robot.gotoXYenc(1000, 500);             // navigue + arrête à la cible
+robot.gotoXYenc(1000, 500, 90);         // avec orientation finale
+robot.gotoXYenc(POI::startYellow, 90);  // via POI nommé
+
+// ─── API motion non-bloquante (taskMotionControl) ───────────────────────────
+robot.setTarget(1000, 500, 90);   // poste la cible, retour immédiat
+robot.waitArrived(0);              // bloquant : attend convergence
+robot.waitArrived(150);            // sort à 150 mm de la cible (préparation blend)
+robot.holdPosition();              // mode HOLD : maintient la pose actuelle
+robot.releaseMotion();             // mode IDLE : moteurs libres
 
 // ─── Pose ───────────────────────────────────────────────────────────────────
 robot.setPosition(x, y, theta_deg);
 
 // ─── Vitesse ────────────────────────────────────────────────────────────────
 robot.setSpeed(400);
+robot.setSpeedPct(80, 80);   // % de gCalib.defaultSpeed/defaultAccel
+robot.resetSpeed();          // revient à gCalib.defaultSpeed/defaultAccel
 
 // ─── Détection adversaire ───────────────────────────────────────────────────
 robot.enableObstacle();
 robot.disableObstacle();
 
 // ─── Moteurs ────────────────────────────────────────────────────────────────
-robot.disableMotors();
+robot.disableMotors();   // libère aussi MotionController (→ IDLE)
 robot.enableMotors();
 
 // ─── Chrono ─────────────────────────────────────────────────────────────────
 robot.isEndgame()    // true après MATCH_ENDGAME_MS
 robot.isMatchOver()  // true après MATCH_DURATION_MS
+robot.waitMatchTime(95000);   // bloque jusqu'à la 95e seconde (ou fin match)
 
 // ─── Délai FreeRTOS (dans strategy.cpp ou actuators.cpp) ────────────────────
 #include "../utils.h"
 wait(500);           // attend 500ms en libérant le CPU
 ```
+
+**Recommandation** : utiliser `gotoXYenc` / `goPID` / `turnPID` pour la navigation. Les variantes `go` / `turn` sont open-loop (pas de feedback encodeurs), utiles seulement pour `goStall` (plaquage bordure).
 
 ### Repère de coordonnées
 
@@ -308,5 +328,46 @@ Calibrer en observant les points des poteaux sur Teleplot pendant WAIT_INIT.
 | `lidar` | 0 | 2 | Lecture UART + parsing LD06 |
 | `encoders` | 0 | 3 | update() encodeurs 200Hz — gestion rollover PCNT |
 | `strategy` | 1 | 2 | Pré-match + match + chrono + actionneurs |
+| `motion` | 1 | 3 | **taskMotionControl 50 Hz** — PID continu, exécute Target |
 | `display` | 1 | 1 | Rafraîchissement OLED 2 Hz |
-| `loop()` | 1 | — | LEDs 100ms · Teleplot LIDAR 200ms (WAIT_INIT) · Pose 500ms (match) |
+| `LogServer` | 1 | 1 | Broadcast WebSocket (pose, lidar, motion, etc.) |
+| `loop()` | 1 | — | LEDs 100ms · WiFi telemetry 200ms · Field click poll · Log match 500ms |
+
+---
+
+## Interface Web (data/index.html)
+
+Le robot expose une interface Web accessible via WiFi (mode AP "Karibous" ou STA selon `WIFI_USE_STA` dans `config.h`). Adresse : `http://192.168.4.1` (AP) ou IP affichée sur l'OLED (STA).
+
+### Layout
+
+- **Terrain central** (canvas 900×600) : pose robot, marqueur cible MotionController, points LIDAR optionnels, POIs
+- **Pose bar** sous le terrain : X / Y / θ / état / Nav
+- **Panneau ROBOT** : 7 boutons de contrôle d'état
+- **Onglets droite** : MOTION (debug + radar) / ACTIONNEURS (servos) / CALIBRATION (live) / LOGS
+
+### Click + drag goto
+
+Cliquer sur le terrain envoie un goto au robot. Cliquer-glisser permet de spécifier l'orientation finale (flèche rouge de preview, label θ° en temps réel).
+
+**Autorisé uniquement** : après init et hors match en cours. Le curseur devient crosshair quand autorisé.
+
+### Boutons ROBOT
+
+| Bouton | Action |
+|---|---|
+| ⏹ Stop moteurs | Désactive les moteurs (toujours dispo) |
+| ⚡ Activer moteurs | Réactive |
+| ↩ WAIT_INIT | Retour boucle pré-match sans reset |
+| ▶ Lancer Init | Rejoue runInitYellow/Blue |
+| ▶ Lancer Match | Démarre le match (skip tirette) |
+| ⏱ Stop match | Force la fin du match |
+| ↺ Relancer Match | Reset + relance la stratégie |
+
+### Calibration live
+
+Onglet CALIBRATION : modifier les paramètres (PID, géométrie, vitesses) en RAM sans recompiler. Une fois validés sur le robot, **les copier dans `config.h`** pour la persistance — sinon perdus au reboot.
+
+### Synchronisation POI
+
+`data/poi.js` est auto-généré depuis `src/strategy/poi.h` par `scripts/sync_poi.py` à chaque build PIO. Ajouter un POI : éditer **uniquement** `poi.h`, puis ajouter une entrée dans `POI_META` (`index.html`) pour le label/couleur d'affichage.

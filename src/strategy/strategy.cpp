@@ -22,6 +22,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include "strategy.h"
+#include "../live_config.h"
 #include "../actuators/actuators.h"
 #include "../utils.h"
 
@@ -31,18 +32,18 @@ void runCalibration(Robot &robot, QuadEncoder &encL, QuadEncoder &encR) {
     robot.disableObstacle();
 
     Serial.println("\n=== CALIBRATION ANGLE (turn 360) ===");
-    Serial.printf("WHEELBASE_MM actuel : %.2f\n", (double)WHEELBASE_MM);
+    Serial.printf("WHEELBASE_MM actuel : %.2f\n", (double)gCalib.wheelbase);
 
     int32_t l0 = encL.getCount(), r0 = encR.getCount();
 
     robot.turn(720);
     wait(200);
 
-    float arcL = (float)(encL.getCount() - l0) * MM_PER_COUNT;
-    float arcR = (float)(encR.getCount() - r0) * MM_PER_COUNT;
+    float arcL = (float)(encL.getCount() - l0) * gCalib.mmPerCount;
+    float arcR = (float)(encR.getCount() - r0) * gCalib.mmPerCount;
 
-    float actualAngle  = (arcR - arcL) / ENC_WHEELBASE_MM * (180.0f / 3.14159265f);
-    float newWheelbase = WHEELBASE_MM * (720.0f / actualAngle);
+    float actualAngle  = (arcR - arcL) / gCalib.encWheelbase * (180.0f / 3.14159265f);
+    float newWheelbase = gCalib.wheelbase * (720.0f / actualAngle);
 
     Serial.printf("arcG=%.1fmm  arcD=%.1fmm  angle_reel=%.1f deg\n",
                   (double)arcL, (double)arcR, (double)actualAngle);
