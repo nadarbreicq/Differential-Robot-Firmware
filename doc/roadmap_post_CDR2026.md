@@ -59,7 +59,7 @@ robot.holdPosition();           // force le mode HOLD
 
 ---
 
-### 1.2 ⬜ Blend — Enchaînement sans arrêt entre waypoints
+### 1.2 ✅ Blend — Enchaînement sans arrêt entre waypoints
 
 **Objectif** : Ne pas s'arrêter à chaque waypoint, transition fluide vers le suivant.
 
@@ -263,7 +263,7 @@ Implémentation : `StateCmd` enum dans `src/state_cmd.h`, `QueueHandle_t gStateC
 | --- | --- | --- |
 | 1 | ~~`taskMotionControl` (1.1)~~ ✅ | — |
 | 2 | ~~Marqueur cible + Motion debug (2.1, 2.4)~~ ✅ | — |
-| 3 | **Blend (1.2)** | 1.1 |
+| 3 | ~~Blend (1.2)~~ ✅ | — |
 | 4 | **Position hold (1.3)** | 1.1 |
 | 5 | ~~Calibration live groupes 1+2 (3.2)~~ ✅ | — |
 | 6 | **Graphe temps réel (2.5)** | 2.4 |

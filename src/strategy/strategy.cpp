@@ -179,6 +179,22 @@ void runStrategyYellow(Robot &robot) {
     robot.enableObstacle();
     robot.setSpeedPct(80, 80);
 
+    /*
+    robot.setTarget(POI::pantry_04);
+    robot.waitArrived(300);              // blend distance
+    robot.setTarget(POI::stockYellow_04);
+    robot.waitArrived(300);              // blend distance
+    robot.setTarget(POI::stockYellow_01);
+    robot.waitArrived(300);              // blend distance
+    robot.setTarget(POI::pantry_04);
+    robot.waitArrived(300);              // blend distance
+    robot.setTarget(POI::stockYellow_03);
+    robot.waitArrived(300);              // blend distance
+    robot.setTarget(POI::startYellow);
+    robot.waitArrived(0);                // arrêt final
+    */
+
+
     takeStock (robot, POI::stockYellow_01, ANGLE_WEST);
 
     robot.gotoXYenc(400, 1200);

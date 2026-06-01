@@ -53,6 +53,10 @@ public:
     // Met à jour la cible courante de la tâche motion (retour immédiat).
     void setTarget(float x_mm, float y_mm);
     void setTarget(float x_mm, float y_mm, float arrival_deg, bool backward = false);
+    void setTarget(Vec2 poi)                                   { setTarget(poi.x, poi.y); }
+    void setTarget(Vec2 poi, float arrival_deg, bool backward = false) {
+        setTarget(poi.x, poi.y, arrival_deg, backward);
+    }
     // Maintient la pose courante en mode HOLD.
     void holdPosition() { _motionCtrl.holdPosition(); }
     // Libère la tâche motion → IDLE (moteurs en roue libre).

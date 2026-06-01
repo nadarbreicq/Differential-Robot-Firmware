@@ -98,9 +98,19 @@ private:
     void _initFinalTurnPhase();
     void _initHold();
     void _completeTarget();
+    // Blend : transition fluide vers une nouvelle cible pendant un TRANSLATE.
+    // Préserve _phaseSpeedCap et compense la courbure via différentiel d'arc
+    // entre roues. speedScale ∈ [0, 1] applique la règle de sécurité 30°/60°.
+    void _initBlendPhase(float turnErr, float speedScale);
+    // Vérifie si la transition vers _activeTgt est éligible au blend.
+    // À appeler quand state == MOVING && phase == TRANSLATE.
+    // Retourne true si _initBlendPhase a été appelé.
+    bool _tryBlendTransition();
 
     // PID
-    bool _runPidStep();          // une itération wheel-PID, true si convergé
+    bool _runPidStep();           // dispatcher selon la phase courante
+    bool _runWheelPidStep();      // wheel-PID classique (ALIGN, FINAL_TURN)
+    bool _runPoseStep();          // contrôleur pose-based (TRANSLATE)
     void _resetPidState();
     bool _checkObstacle();       // true si obstacle détecté dans direction courante
 
@@ -142,6 +152,11 @@ private:
     // OBSTACLE state
     uint32_t _obstacleStartMs = 0;
     bool     _obstacleBackedUp = false;
+
+    // Flag : true = phase TRANSLATE utilise le contrôleur pose-based
+    // (set par _initBlendPhase, reset par _initTranslatePhase classique).
+    // Permet d'avoir le wheel-PID inchangé pour les gotoXYenc/goPID standards.
+    bool _useBlendController = false;
 
     // Affichage debug
     volatile float _distMm = 0;

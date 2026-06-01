@@ -36,6 +36,10 @@ void MotionController::setTarget(const Target& t) {
     if (_userTgt.stopMm  <= 0.0f) _userTgt.stopMm  = gCalib.stopMm;
     _userSeq++;
     portEXIT_CRITICAL(&_mux);
+    // Empêche waitArrived(blendMm) de sortir prématurément avant que la tâche
+    // motion ait pris en compte la nouvelle cible (1 cycle = 20 ms).
+    // Sans ça, _distMm garde sa valeur du mouvement précédent (souvent 0).
+    _distMm = 1e9f;
 }
 
 void MotionController::holdPosition() {
@@ -102,8 +106,16 @@ void MotionController::_loop() {
         if (seq != _handledSeq) {
             _handledSeq = seq;
             _activeTgt  = tgtCopy;
-            _state      = State::MOVING;
-            _initAlignPhase();
+
+            // Tente un blend si on était déjà en TRANSLATE — sinon init normal
+            bool blended = false;
+            if (_state == State::MOVING && _phase == Phase::TRANSLATE) {
+                blended = _tryBlendTransition();
+            }
+            if (!blended) {
+                _state = State::MOVING;
+                _initAlignPhase();
+            }
         }
 
         switch (_state) {
@@ -130,7 +142,12 @@ void MotionController::_loop() {
                 if (phaseDone) {
                     switch (_phase) {
                         case Phase::ALIGN:      _initTranslatePhase(); break;
-                        case Phase::TRANSLATE:  _initFinalTurnPhase(); break;
+                        case Phase::TRANSLATE:
+                            // En blend : on arrive "proche", pas d'ajustement final.
+                            // Le path-following compte sur la vitesse, pas la précision.
+                            if (_useBlendController) _completeTarget();
+                            else                     _initFinalTurnPhase();
+                            break;
                         case Phase::FINAL_TURN: _completeTarget();     break;
                         default:                _completeTarget();     break;
                     }
@@ -221,6 +238,8 @@ void MotionController::_initAlignPhase() {
 }
 
 void MotionController::_initTranslatePhase() {
+    _useBlendController = false;   // wheel-PID classique
+
     const float curX = gDisplay.enc_pose_x_mm;
     const float curY = gDisplay.enc_pose_y_mm;
     const float curTheta = gDisplay.enc_pose_theta_rad;
@@ -303,6 +322,70 @@ void MotionController::_completeTarget() {
     portEXIT_CRITICAL(&_mux);
 }
 
+// ─── Blend (transition fluide pendant TRANSLATE) ─────────────────────────────
+//
+//  Quand un nouveau setTarget arrive alors qu'on est en MOVING/TRANSLATE :
+//  • angle < 30°       → blend plein (speedScale = 1)
+//  • angle 30°-60°     → blend réduit (speedScale = cos(angle))
+//  • angle ≥ 60°       → pas de blend (force stop + ALIGN classique)
+//
+//  Le blend conserve _phaseSpeedCap (pas de ramp depuis minSpd).
+//  Une courbure approximative est appliquée via différentiel d'arc entre les
+//  roues : avgCenter = sign·dist, halfDelta = wheelbase·turnErr/2.
+//
+bool MotionController::_tryBlendTransition() {
+    const float curX     = gDisplay.enc_pose_x_mm;
+    const float curY     = gDisplay.enc_pose_y_mm;
+    const float curTheta = gDisplay.enc_pose_theta_rad;
+
+    const float dx = _activeTgt.x_mm - curX;
+    const float dy = _activeTgt.y_mm - curY;
+    const float dist = sqrtf(dx*dx + dy*dy);
+    if (dist < 1.0f) return false;
+
+    const float aerr = _normAngle(atan2f(-dy, dx) - curTheta);
+    const bool  goBack = _activeTgt.backward || fabsf(aerr) > PI_F * 0.5f;
+    const float turnErr = goBack ? _normAngle(aerr + (aerr >= 0 ? -PI_F : PI_F)) : aerr;
+    _activeGoBack = goBack;
+
+    // Pose-based : le contrôleur gère tous les angles naturellement (v_lin∝cos(err)).
+    // Plus de seuil 30°/60° — la transition est continue à n'importe quel angle.
+    LOG_I("MOTION", "Blend %.0fmm angle=%.0fdeg", (double)dist, (double)(turnErr * RAD2DEG));
+    _initBlendPhase(turnErr, 1.0f);
+    return true;
+}
+
+// Init blend : reprend TRANSLATE sans reset du speedCap.
+// Avec le contrôleur pose-based, plus besoin de cibles wheel ni d'arc compensé.
+void MotionController::_initBlendPhase(float /*turnErr*/, float speedScale) {
+    _useBlendController = true;   // dispatch vers _runPoseStep
+
+    const float curX = gDisplay.enc_pose_x_mm;
+    const float curY = gDisplay.enc_pose_y_mm;
+
+    const float dx = _activeTgt.x_mm - curX;
+    const float dy = _activeTgt.y_mm - curY;
+    const float dist = sqrtf(dx*dx + dy*dy);
+    if (dist < 1.0f) { _initFinalTurnPhase(); return; }
+
+    // CLÉ DU BLEND : on conserve _phaseSpeedCap au lieu de le reset à minSpd
+    const float savedSpeedCap = _phaseSpeedCap;
+
+    _phaseSpeed   = _activeTgt.speed;
+    _phaseAccel   = _activeTgt.accel;
+    _phaseStopMm  = _activeTgt.stopMm;
+    _phaseMoveDir = gDisplay.enc_pose_theta_rad + (_activeGoBack ? PI_F : 0.0f);
+    _phaseObstacleEn = _activeTgt.obstacleEn;
+
+    const float blendCap = savedSpeedCap * speedScale;
+    _phaseSpeedCap = fmaxf(gCalib.minSpd, fminf(blendCap, _phaseSpeed));
+
+    _phase = Phase::TRANSLATE;
+    _motion->setAcceleration(_phaseAccel);
+    _motion->pushAcceleration();
+    gDisplay.robot_state = RobotState::MOVING;
+}
+
 // ─── PID step (une itération wheel-PID) ──────────────────────────────────────
 
 void MotionController::_resetPidState() {
@@ -313,7 +396,17 @@ void MotionController::_resetPidState() {
     _phaseSpeedCap = gCalib.minSpd;
 }
 
+// Dispatcher : pose-based UNIQUEMENT pendant un blend (TRANSLATE entré via
+// _initBlendPhase). Sinon wheel-PID classique (comportement original conservé
+// pour gotoXYenc, goPID, turnPID, ALIGN, FINAL_TURN).
 bool MotionController::_runPidStep() {
+    if (_phase == Phase::TRANSLATE && _useBlendController) return _runPoseStep();
+    return _runWheelPidStep();
+}
+
+// Wheel-PID classique : utilisé pour ALIGN et FINAL_TURN (rotations sur place
+// où les roues ont des cibles count opposées).
+bool MotionController::_runWheelPidStep() {
     const float dt = OBS_POLL_MS / 1000.0f;
 
     _phaseSpeedCap = fminf(_phaseSpeedCap + _phaseAccel * dt, _phaseSpeed);
@@ -322,7 +415,11 @@ bool MotionController::_runPidStep() {
     float eR = (float)(_phaseTR - _encR->getCount()) * gCalib.mmPerCount;
     float avg = (fabsf(eL) + fabsf(eR)) * 0.5f;
 
-    _distMm = avg;
+    // _distMm = distance GÉOMÉTRIQUE à la cible XY (pour waitArrived(blendMm)).
+    const float dgx = _activeTgt.x_mm - gDisplay.enc_pose_x_mm;
+    const float dgy = _activeTgt.y_mm - gDisplay.enc_pose_y_mm;
+    _distMm = sqrtf(dgx*dgx + dgy*dgy);
+
     gDisplay.nav_dist_mm   = avg;
     gDisplay.nav_delta_deg = eL - eR;
 
@@ -360,6 +457,91 @@ bool MotionController::_runPidStep() {
     _motion->setMotorVelocities(outL, outR);
     _lastCmdL = outL;
     _lastCmdR = outR;
+    return false;
+}
+
+// ─── Contrôleur pose-based (phase TRANSLATE) ─────────────────────────────────
+//
+//  Au lieu de viser des cibles wheel-position, on calcule directement les
+//  vitesses linéaire et angulaire à partir de l'erreur de pose, puis on les
+//  applique via cinématique différentielle :
+//
+//    v_linear  = clamp(speedCap, braking_profile) × cos(heading_err)
+//    v_angular = Kp_ang × heading_err
+//    vL = v_linear − v_angular × wheelbase/2
+//    vR = v_linear + v_angular × wheelbase/2
+//
+//  Avantages :
+//  • Vrai blend sans approximation : la commande s'adapte continuellement
+//  • Pas de résidu géométrique (converge sur dist géométrique directement)
+//  • Pour grand angle, cos(err)→0 ⇒ rotation pure en place, naturellement
+//
+bool MotionController::_runPoseStep() {
+    const float dt = OBS_POLL_MS / 1000.0f;
+
+    // Le blend vise un suivi de trajectoire rapide, PAS la précision waypoint.
+    // Tolérances larges pour éviter les oscillations en fin de phase :
+    constexpr float BLEND_ARRIVAL_MM  = 25.0f;   // zone "arrivé" — phase done
+    constexpr float BLEND_APPROACH_MM = 60.0f;   // sous ce seuil : pas de correction angulaire
+                                                  // (évite atan2 chaotique près du point)
+
+    const float curX = gDisplay.enc_pose_x_mm;
+    const float curY = gDisplay.enc_pose_y_mm;
+    const float curTheta = gDisplay.enc_pose_theta_rad;
+
+    const float dx = _activeTgt.x_mm - curX;
+    const float dy = _activeTgt.y_mm - curY;
+    const float dist = sqrtf(dx*dx + dy*dy);
+
+    _distMm = dist;
+    gDisplay.nav_dist_mm = dist;
+
+    // Convergence avec tolérance large (pas de précision en blend)
+    if (dist <= BLEND_ARRIVAL_MM) {
+        _motion->softStop();
+        _lastCmdL = 0; _lastCmdR = 0;
+        return true;
+    }
+
+    // Ramp speedCap + profil de freinage
+    _phaseSpeedCap = fminf(_phaseSpeedCap + _phaseAccel * dt, _phaseSpeed);
+    const float brakingCap = sqrtf(2.0f * _phaseAccel * fmaxf(0.0f, dist - BLEND_ARRIVAL_MM));
+    const float v_linear_max = fminf(_phaseSpeedCap, brakingCap);
+
+    // Direction vers la cible
+    float thetaToTarget = atan2f(-dy, dx);
+    if (_activeGoBack) thetaToTarget = _normAngle(thetaToTarget + PI_F);
+    const float headingErr = _normAngle(thetaToTarget - curTheta);
+    gDisplay.nav_delta_deg = headingErr * RAD2DEG;
+
+    // Vitesse linéaire = v_max × cos(headingErr)
+    const float align_factor = fmaxf(0.0f, cosf(headingErr));
+    float v_linear = v_linear_max * align_factor;
+    if (_activeGoBack) v_linear = -v_linear;
+    if (align_factor > 0.5f && fabsf(v_linear) < gCalib.minSpd) {
+        v_linear = copysignf(gCalib.minSpd, _activeGoBack ? -1.0f : 1.0f);
+    }
+
+    // Vitesse angulaire : coupée en zone d'approche pour éviter le frétillage
+    float v_angular = 0.0f;
+    if (dist > BLEND_APPROACH_MM) {
+        const float Kp_ang = 4.0f;
+        const float omega_max = 6.0f;
+        v_angular = Kp_ang * headingErr;
+        v_angular = fmaxf(-omega_max, fminf(v_angular, omega_max));
+    }
+
+    // Cinématique différentielle
+    const float half_b = gCalib.encWheelbase * 0.5f;
+    float vL = v_linear - v_angular * half_b;
+    float vR = v_linear + v_angular * half_b;
+    vL = fmaxf(-_phaseSpeed, fminf(vL, _phaseSpeed));
+    vR = fmaxf(-_phaseSpeed, fminf(vR, _phaseSpeed));
+
+    _motion->setMotorVelocities(vL, vR);
+    _lastCmdL = vL;
+    _lastCmdR = vR;
+
     return false;
 }
 
