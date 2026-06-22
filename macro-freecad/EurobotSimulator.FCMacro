@@ -1,0 +1,684 @@
+# -*- coding: utf-8 -*-
+"""EurobotSimulator.FCMacro
+
+Connecte FreeCAD au serveur WebSocket du robot (log_server.cpp, port 81)
+pour afficher sa position en temps reel sur un terrain 3D et envoyer les
+memes commandes que la page web embarquee (data/index.html) :
+goto, state_cmd, servo.
+
+Aucune dependance externe : uniquement la bibliotheque standard Python
+(socket/threading/json/...) plus FreeCAD/FreeCADGui/PySide deja fournis
+par l'application. Le client WebSocket (handshake + framing RFC 6455)
+est reimplemente a la main pour eviter tout pip install.
+"""
+
+import base64
+import hashlib
+import json
+import os
+import queue
+import socket
+import struct
+import threading
+
+import FreeCAD as App
+import FreeCADGui as Gui
+import Part
+
+try:
+    from PySide6 import QtCore, QtWidgets
+except ImportError:
+    from PySide2 import QtCore, QtWidgets
+
+DOC_NAME = "EurobotSimulator"
+# TABLE_W_MM/TABLE_H_MM : src/config.h, TABLE_WIDTH_MM / TABLE_HEIGHT_MM.
+TABLE_W_MM = 3000.0
+TABLE_H_MM = 2000.0
+# Gabarit chassis (axe des roues = origine locale, X+ = avant) :
+# ROBOT_BACK_TO_CENTER_MM (config.h) = 80.9mm ; avant non defini dans le
+# firmware, suppose symetrique en l'absence de mesure. Largeur/hauteurs
+# fournies manuellement (absentes du firmware) : caisse 230x320mm + mat
+# de balise (cylindre 80mm diam.) centre, montant jusqu'a 430mm de haut.
+ROBOT_BACK_TO_CENTER_MM = 80.9
+ROBOT_FRONT_TO_CENTER_MM = 80.9
+ROBOT_W_MM = 230.0
+ROBOT_H_MM = 320.0
+BEACON_DIAM_MM = 80.0
+BEACON_TOTAL_H_MM = 430.0
+
+DEFAULT_HOST = "192.168.4.1"   # IP par defaut en mode AP (config.h WIFI_USE_STA=0)
+DEFAULT_PORT = 81              # port WebSocket fixe du firmware
+
+STATE_ACTIONS = [
+    ("Stop moteurs", "stop_motors"),
+    ("Activer moteurs", "enable_motors"),
+    ("WAIT_INIT", "wait_init"),
+    ("Lancer Init", "restart_init"),
+    ("Lancer Match", "start_match"),
+    ("Stop match", "stop_match"),
+    ("Relancer Match", "restart_match"),
+]
+
+SERVO_IDS = ["brasDroit", "brasGauche", "lifter", "gripper"]
+SEQ_BUTTONS = [("Sequence Init", "seq_init"), ("Sequence Prise", "seq_prise")]
+
+# Pas de capteur de position sur les servos (cf. actuators/servo.cpp,
+# _currentDeg = NAN au boot, mis a jour seulement par un setAngle() explicite).
+# Le firmware ne connait donc pas la position physique reelle tant qu'aucune
+# commande n'a ete envoyee depuis le demarrage. Valeurs de repos par defaut
+# reprises de data/index.html (mêmes attributs value="..." codes en dur),
+# en attendant le premier vrai message "act".
+DEFAULT_SERVO_PCT = {"brasDroit": 48, "brasGauche": 50, "lifter": 14, "gripper": 0}
+
+# Points d'interet strategie (depart, garde-manger, frigos, stocks).
+# Instantane de data/poi.js (POI_COORDS, auto-genere depuis src/strategy/poi.h)
+# et data/index.html (POI_META/POI_STYLE) — a resynchroniser a la main si
+# poi.h change (pas de lecture live du repo pour rester portable/independant).
+POI_COORDS_MM = {
+    "startYellow": (375, 225), "startYellow_ninja": (715, 100),
+    "startBlue": (2625, 225), "startBlue_ninja": (2285, 100),
+    "pantry_01": (1250, 550), "pantry_02": (1750, 550),
+    "pantry_03": (100, 1200), "pantry_04": (800, 1200),
+    "pantry_05": (1500, 1200), "pantry_06": (2200, 1200),
+    "pantry_07": (2900, 1200), "pantry_08": (700, 1900),
+    "pantry_09": (1500, 1900), "pantry_10": (2300, 1900),
+    "FridgeYellow_01": (1100, 280), "FridgeYellow_02": (1350, 225),
+    "FridgeBlue_01": (1900, 280), "FridgeBlue_02": (1650, 225),
+    "stockYellow_01": (175, 790), "stockYellow_02": (175, 1600),
+    "stockYellow_03": (1100, 1825), "stockYellow_04": (1150, 1200),
+    "stockNinjaYellow": (800, 325),
+    "stockBlue_01": (2825, 790), "stockBlue_02": (2825, 1600),
+    "stockBlue_03": (1900, 1825), "stockBlue_04": (1850, 1200),
+    "stockNinjaBlue": (2200, 325),
+}
+POI_META = {
+    "startYellow": ("DY", "startY"), "startYellow_ninja": ("DYn", "startY"),
+    "startBlue": ("DB", "startB"), "startBlue_ninja": ("DBn", "startB"),
+    "pantry_01": ("P1", "pantry"), "pantry_02": ("P2", "pantry"),
+    "pantry_03": ("P3", "pantry"), "pantry_04": ("P4", "pantry"),
+    "pantry_05": ("P5", "pantry"), "pantry_06": ("P6", "pantry"),
+    "pantry_07": ("P7", "pantry"), "pantry_08": ("P8", "pantry"),
+    "pantry_09": ("P9", "pantry"), "pantry_10": ("P10", "pantry"),
+    "FridgeYellow_01": ("FY1", "fridgeY"), "FridgeYellow_02": ("FY2", "fridgeY"),
+    "FridgeBlue_01": ("FB1", "fridgeB"), "FridgeBlue_02": ("FB2", "fridgeB"),
+    "stockYellow_01": ("SY1", "stockY"), "stockYellow_02": ("SY2", "stockY"),
+    "stockYellow_03": ("SY3", "stockY"), "stockYellow_04": ("SY4", "stockY"),
+    "stockNinjaYellow": ("SYn", "stockY"),
+    "stockBlue_01": ("SB1", "stockB"), "stockBlue_02": ("SB2", "stockB"),
+    "stockBlue_03": ("SB3", "stockB"), "stockBlue_04": ("SB4", "stockB"),
+    "stockNinjaBlue": ("SBn", "stockB"),
+}
+# categorie -> couleur RVB (un Points::Feature par categorie pour garder une
+# couleur distincte, affiche en TRES gros points plutot que des solides).
+POI_STYLE = {
+    "startY":  (1.0, 0.83, 0.23),
+    "startB":  (0.45, 0.75, 0.99),
+    "pantry":  (0.70, 0.70, 0.70),
+    "fridgeY": (1.0, 0.83, 0.23),
+    "fridgeB": (0.45, 0.75, 0.99),
+    "stockY":  (0.41, 0.86, 0.49),
+    "stockB":  (0.45, 0.75, 0.99),
+}
+POI_MARKER_H_MM = 5.0
+POI_POINT_SIZE = 18.0       # taille d'affichage du point (gros, lisible de loin)
+POI_LABEL_H_MM = 30.0       # hauteur du texte au-dessus du point
+
+
+# ---------------------------------------------------------------------------
+# Client WebSocket minimal (RFC 6455) — stdlib uniquement.
+# ---------------------------------------------------------------------------
+class MiniWebSocket:
+    _GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    def __init__(self, host, port, path="/", timeout=5):
+        self.host = host
+        self.port = port
+        self.sock = socket.create_connection((host, port), timeout=timeout)
+        self.sock.settimeout(None)
+        self._send_lock = threading.Lock()
+        self._handshake(path)
+
+    def _handshake(self, path):
+        key = base64.b64encode(os.urandom(16)).decode()
+        req = (
+            "GET {0} HTTP/1.1\r\n"
+            "Host: {1}:{2}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key: {3}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        ).format(path, self.host, self.port, key)
+        self.sock.sendall(req.encode("ascii"))
+        resp = b""
+        while b"\r\n\r\n" not in resp:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("Handshake WS : connexion fermee")
+            resp += chunk
+        header = resp.split(b"\r\n\r\n", 1)[0].decode("iso-8859-1")
+        if " 101 " not in header.split("\r\n", 1)[0]:
+            raise ConnectionError("Handshake WS refuse : " + header.splitlines()[0])
+        expected = base64.b64encode(
+            hashlib.sha1((key + self._GUID).encode("ascii")).digest()
+        ).decode()
+        if expected not in header:
+            raise ConnectionError("Handshake WS : Sec-WebSocket-Accept invalide")
+
+    def send_text(self, text):
+        payload = text.encode("utf-8")
+        mask = os.urandom(4)
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        frame = bytearray([0x81])
+        n = len(payload)
+        if n <= 125:
+            frame.append(0x80 | n)
+        elif n <= 0xFFFF:
+            frame.append(0x80 | 126)
+            frame += struct.pack(">H", n)
+        else:
+            frame.append(0x80 | 127)
+            frame += struct.pack(">Q", n)
+        with self._send_lock:
+            self.sock.sendall(bytes(frame) + mask + masked)
+
+    def recv_text(self):
+        """Bloque jusqu'a une trame texte complete, ou None si la connexion ferme."""
+        while True:
+            head = self._recv_exact(2)
+            if head is None:
+                return None
+            b0, b1 = head[0], head[1]
+            opcode = b0 & 0x0F
+            masked = bool(b1 & 0x80)
+            length = b1 & 0x7F
+            if length == 126:
+                length = struct.unpack(">H", self._recv_exact(2))[0]
+            elif length == 127:
+                length = struct.unpack(">Q", self._recv_exact(8))[0]
+            mask = self._recv_exact(4) if masked else None
+            payload = self._recv_exact(length)
+            if payload is None:
+                return None
+            if mask:
+                payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+            if opcode == 0x8:          # close
+                return None
+            if opcode == 0x9:          # ping -> pong
+                self._send_pong(payload)
+                continue
+            if opcode == 0xA:          # pong
+                continue
+            if opcode == 0x1:          # text
+                return payload.decode("utf-8", errors="replace")
+            # binaire/continuation : non utilise par le firmware, ignore
+
+    def _recv_exact(self, n):
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                return None
+            buf += chunk
+        return bytes(buf)
+
+    def _send_pong(self, payload):
+        mask = os.urandom(4)
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        frame = bytearray([0x8A, 0x80 | len(payload)])
+        with self._send_lock:
+            self.sock.sendall(bytes(frame) + mask + masked)
+
+    def close(self):
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
+
+
+# ---------------------------------------------------------------------------
+# Liaison robot : thread de lecture + file consommee par un QTimer du thread
+# GUI (le document FreeCAD ne doit etre modifie que depuis le thread principal).
+# ---------------------------------------------------------------------------
+class RobotLink:
+    def __init__(self):
+        self._ws = None
+        self._thread = None
+        self.inbox = queue.Queue()
+
+    @property
+    def connected(self):
+        return self._ws is not None
+
+    def connect(self, host, port):
+        self.disconnect()
+        self._ws = MiniWebSocket(host, port, "/")
+        self._thread = threading.Thread(target=self._reader, daemon=True)
+        self._thread.start()
+
+    def disconnect(self):
+        if self._ws is not None:
+            ws, self._ws = self._ws, None
+            ws.close()
+
+    def send(self, obj):
+        if self._ws is None:
+            raise ConnectionError("non connecte")
+        # separators sans espace : le parseur firmware (log_server.cpp) fait
+        # un strstr litteral sur '"id":"' pour le type "servo" et ne tolere
+        # pas l'espace que json.dumps() insere par defaut apres ":".
+        self._ws.send_text(json.dumps(obj, separators=(",", ":")))
+
+    def _reader(self):
+        ws = self._ws
+        try:
+            while True:
+                text = ws.recv_text()
+                if text is None:
+                    break
+                try:
+                    self.inbox.put(json.loads(text))
+                except ValueError:
+                    pass
+        except OSError:
+            pass
+        finally:
+            self._ws = None
+            self.inbox.put({"_event": "disconnected"})
+
+
+# ---------------------------------------------------------------------------
+# Scene FreeCAD : terrain + robot (avec fleche de cap) + nuage de points LIDAR.
+# ---------------------------------------------------------------------------
+def _build_robot_shape():
+    length = ROBOT_BACK_TO_CENTER_MM + ROBOT_FRONT_TO_CENTER_MM
+    box = Part.makeBox(
+        length, ROBOT_W_MM, ROBOT_H_MM,
+        App.Vector(-ROBOT_BACK_TO_CENTER_MM, -ROBOT_W_MM / 2, 0),
+    )
+    beacon = Part.makeCylinder(
+        BEACON_DIAM_MM / 2, BEACON_TOTAL_H_MM - ROBOT_H_MM,
+        App.Vector(0, 0, ROBOT_H_MM),
+        App.Vector(0, 0, 1),
+    )
+    arrow = Part.makeCone(
+        40.0, 0.0, 90.0,
+        App.Vector(ROBOT_FRONT_TO_CENTER_MM - 30, 0, ROBOT_H_MM / 2),
+        App.Vector(1, 0, 0),
+    )
+    return Part.makeCompound([box, beacon, arrow])
+
+
+def _ensure_container(doc, name):
+    """Garantit que `name` est un conteneur App::Part (deplacable en bloc,
+    et dans lequel l'utilisateur peut glisser ce qu'il veut : CAO importee,
+    elements de jeu, mesh du robot reel, ...). Migre l'ancien objet si besoin."""
+    obj = doc.getObject(name)
+    if obj is not None and obj.TypeId != "App::Part":
+        doc.removeObject(obj.Name)
+        obj = None
+    is_new = obj is None
+    if is_new:
+        obj = doc.addObject("App::Part", name)
+    return obj, is_new
+
+
+def _build_poi_markers(field):
+    # Tout est reconstruit a chaque lancement (objets legers, ~50) pour
+    # eviter les collisions de noms avec d'anciennes versions de la macro
+    # (cylindres, nuages par categorie, labels selectionnables, ...).
+    for obj in list(field.Group):
+        if obj.Name.startswith("POI"):
+            field.Document.removeObject(obj.Name)
+
+    for name, (x_mm, y_mm) in POI_COORDS_MM.items():
+        meta = POI_META.get(name)
+        if meta is None:
+            continue
+        label, cat = meta
+        color = POI_STYLE.get(cat, (0.6, 0.6, 0.6))
+
+        pt = field.newObject("Part::Feature", "POIPt_" + name)
+        pt.Label = "POI_%s_%s" % (label, name)
+        pt.Shape = Part.Vertex(0, 0, 0)
+        pt.Placement = App.Placement(App.Vector(x_mm, _flip_y(y_mm), POI_MARKER_H_MM), App.Rotation())
+        pt.ViewObject.PointSize = POI_POINT_SIZE
+        pt.ViewObject.PointColor = color
+        pt.ViewObject.ShapeColor = color
+
+        ann = field.newObject("App::Annotation", "POIlabel_" + name)
+        ann.LabelText = [label]
+        ann.Position = App.Vector(x_mm, _flip_y(y_mm), POI_LABEL_H_MM)
+        ann.ViewObject.FontSize = 14
+        ann.ViewObject.TextColor = color
+        if hasattr(ann.ViewObject, "Selectable"):
+            ann.ViewObject.Selectable = False
+
+
+def get_or_create_doc():
+    doc = App.getDocument(DOC_NAME) if DOC_NAME in App.listDocuments() else App.newDocument(DOC_NAME)
+    names = [o.Name for o in doc.Objects]
+
+    field, field_new = _ensure_container(doc, "Field")
+    if field_new:
+        table = field.newObject("Part::Box", "FieldTable")
+        table.Length, table.Width, table.Height = TABLE_W_MM, TABLE_H_MM, 1.0
+        table.ViewObject.ShapeColor = (0.85, 0.85, 0.80)
+        table.ViewObject.Transparency = 40
+    _build_poi_markers(field)
+
+    robot, _robot_new = _ensure_container(doc, "Robot")
+    body = doc.getObject("RobotBody")
+    if body is None:
+        body = robot.newObject("Part::Feature", "RobotBody")
+        body.ViewObject.ShapeColor = (0.9, 0.2, 0.1)
+    body.Shape = _build_robot_shape()  # toujours reappliquee : suit les dims a jour
+
+    if "Lidar" not in names:
+        try:
+            import Points
+            lidar = doc.addObject("Points::Feature", "Lidar")
+            lidar.ViewObject.PointSize = 4.0
+            lidar.ViewObject.ShapeColor = (0.1, 0.6, 1.0)
+        except ImportError:
+            App.Console.PrintWarning("Module Points indisponible : nuage LIDAR desactive\n")
+
+    doc.recompute()
+    Gui.activeDocument().activeView().viewTop()
+    Gui.SendMsgToActiveView("ViewFit")
+    return doc
+
+
+# Convention firmware (main.cpp/step_control.cpp) : X+ = Est, Y+ = SUD,
+# theta CCW positif (0deg=Est, 90deg=Nord) -> x += d*cos(theta), y -= d*sin(theta).
+# La vue de dessus de FreeCAD a Y+ vers le Nord (haut d'ecran), donc on
+# inverse l'axe Y a l'affichage pour retrouver Nord en haut / Sud en bas
+# comme sur la page web. Cette fonction est sa propre inverse (mm <-> FreeCAD).
+def _flip_y(y_mm):
+    return TABLE_H_MM - y_mm
+
+
+def set_robot_pose(doc, x_mm, y_mm, theta_deg):
+    robot = doc.getObject("Robot")
+    if robot is None:
+        return
+    robot.Placement = App.Placement(
+        App.Vector(x_mm, _flip_y(y_mm), 1.0), App.Rotation(App.Vector(0, 0, 1), theta_deg)
+    )
+
+
+def set_lidar_points(doc, pts_xy):
+    lidar = doc.getObject("Lidar")
+    if lidar is None:
+        return
+    try:
+        import Points
+        lidar.Points = Points.Points([App.Vector(x, _flip_y(y), 50.0) for x, y in pts_xy])
+    except ImportError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Observateur de selection : clic sur le terrain -> commande "goto".
+# ---------------------------------------------------------------------------
+def _is_inside_container(obj, container):
+    while obj is not None:
+        if obj == container:
+            return True
+        obj = obj.getParentGroup()
+    return False
+
+
+class _FieldClickObserver:
+    def __init__(self, doc, on_click):
+        self._doc = doc
+        self._on_click = on_click
+
+    def addSelection(self, doc_name, obj_name, sub, pnt):
+        obj = self._doc.getObject(obj_name)
+        field = self._doc.getObject("Field")
+        if obj is None or field is None or not _is_inside_container(obj, field):
+            return
+        self._on_click(pnt[0], pnt[1])
+        Gui.Selection.clearSelection()
+
+
+# ---------------------------------------------------------------------------
+# Panneau de controle (fenetre Qt independante, non modale).
+# ---------------------------------------------------------------------------
+class EurobotPanel(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(EurobotPanel, self).__init__(parent)
+        self.setWindowTitle("Eurobot — liaison robot")
+        self.doc = get_or_create_doc()
+        self.link = RobotLink()
+        self._click_observer = _FieldClickObserver(self.doc, self._send_goto)
+        self._build_ui()
+
+        self._timer = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._poll_inbox)
+        self._timer.start(100)
+
+    # -- UI ---------------------------------------------------------------
+    def _build_ui(self):
+        layout = QtWidgets.QVBoxLayout(self)
+
+        conn_box = QtWidgets.QGroupBox("Connexion")
+        conn_layout = QtWidgets.QHBoxLayout(conn_box)
+        self.host_edit = QtWidgets.QLineEdit(DEFAULT_HOST)
+        self.port_edit = QtWidgets.QLineEdit(str(DEFAULT_PORT))
+        self.port_edit.setFixedWidth(50)
+        self.connect_btn = QtWidgets.QPushButton("Connecter")
+        self.connect_btn.clicked.connect(self._toggle_connect)
+        self.status_lbl = QtWidgets.QLabel("Deconnecte")
+        conn_layout.addWidget(QtWidgets.QLabel("Hote :"))
+        conn_layout.addWidget(self.host_edit)
+        conn_layout.addWidget(QtWidgets.QLabel("Port :"))
+        conn_layout.addWidget(self.port_edit)
+        conn_layout.addWidget(self.connect_btn)
+        conn_layout.addWidget(self.status_lbl)
+        layout.addWidget(conn_box)
+
+        self.click_chk = QtWidgets.QCheckBox("Clic sur le terrain (objet Field) envoie un goto")
+        self.click_chk.stateChanged.connect(self._toggle_click_observer)
+        layout.addWidget(self.click_chk)
+
+        self.pose_lbl = QtWidgets.QLabel("Pose : —")
+        layout.addWidget(self.pose_lbl)
+
+        state_box = QtWidgets.QGroupBox("Commandes d'etat (state_cmd)")
+        state_layout = QtWidgets.QGridLayout(state_box)
+        for i, (label, action) in enumerate(STATE_ACTIONS):
+            btn = QtWidgets.QPushButton(label)
+            btn.clicked.connect(lambda _checked=False, a=action: self._send_state_cmd(a))
+            state_layout.addWidget(btn, i // 2, i % 2)
+        layout.addWidget(state_box)
+
+        servo_box = QtWidgets.QGroupBox("Actionneurs (servo)")
+        servo_layout = QtWidgets.QGridLayout(servo_box)
+        self.sliders = {}
+        self.servo_val_lbls = {}
+        for row, servo_id in enumerate(SERVO_IDS):
+            default_pct = DEFAULT_SERVO_PCT.get(servo_id, 0)
+            slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setValue(default_pct)  # estimation de repos (pas de capteur reel, cf. DEFAULT_SERVO_PCT)
+            val_lbl = QtWidgets.QLabel("%d%%" % default_pct)
+            val_lbl.setFixedWidth(40)
+            slider.valueChanged.connect(
+                lambda v, sid=servo_id, lbl=val_lbl: self._on_slider_changed(sid, v, lbl)
+            )
+            servo_layout.addWidget(QtWidgets.QLabel(servo_id), row, 0)
+            servo_layout.addWidget(slider, row, 1)
+            servo_layout.addWidget(val_lbl, row, 2)
+            self.sliders[servo_id] = slider
+            self.servo_val_lbls[servo_id] = val_lbl
+        seq_layout = QtWidgets.QHBoxLayout()
+        for label, seq_id in SEQ_BUTTONS:
+            btn = QtWidgets.QPushButton(label)
+            btn.clicked.connect(lambda _checked=False, sid=seq_id: self._send_servo(sid, 0))
+            seq_layout.addWidget(btn)
+        servo_layout.addLayout(seq_layout, len(SERVO_IDS), 0, 1, 3)
+        layout.addWidget(servo_box)
+
+        self.act_lbl = QtWidgets.QLabel("Etat reel actionneurs : —")
+        layout.addWidget(self.act_lbl)
+
+    # -- Connexion ----------------------------------------------------------
+    def _toggle_connect(self):
+        if self.link.connected:
+            self.link.disconnect()
+            self.status_lbl.setText("Deconnecte")
+            self.connect_btn.setText("Connecter")
+            return
+        host = self.host_edit.text().strip()
+        try:
+            port = int(self.port_edit.text().strip())
+        except ValueError:
+            QtWidgets.QMessageBox.warning(self, "Eurobot", "Port invalide")
+            return
+        try:
+            self.link.connect(host, port)
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(self, "Eurobot", "Connexion impossible :\n%s" % exc)
+            return
+        self.status_lbl.setText("Connecte a %s:%d" % (host, port))
+        self.connect_btn.setText("Deconnecter")
+
+    # -- Envoi de commandes ---------------------------------------------------
+    def _send(self, payload):
+        if not self.link.connected:
+            self.status_lbl.setText("Non connecte — commande ignoree")
+            return
+        try:
+            self.link.send(payload)
+        except OSError as exc:
+            self.status_lbl.setText("Erreur d'envoi : %s" % exc)
+
+    def _send_state_cmd(self, action):
+        self._send({"type": "state_cmd", "action": action})
+
+    def _send_servo(self, servo_id, val):
+        self._send({"type": "servo", "id": servo_id, "val": float(val)})
+
+    def _send_goto(self, x_mm, y_mm):
+        # x_mm/y_mm viennent du point pique dans la vue FreeCAD (Y vers le Nord) ;
+        # _flip_y reconvertit vers la convention firmware (Y vers le Sud).
+        self._send({"type": "goto", "x": round(x_mm), "y": round(_flip_y(y_mm))})
+
+    def _on_slider_changed(self, servo_id, value, label):
+        label.setText("%d%%" % value)
+        self._send_servo(servo_id, value)
+
+    def _sync_slider(self, servo_id, value):
+        """Aligne le slider sur la valeur reelle remontee par le robot (msg 'act')
+        sans declencher _on_slider_changed (qui renverrait sinon la commande)."""
+        slider = self.sliders.get(servo_id)
+        if slider is None:
+            return
+        value = int(round(value))
+        if slider.value() == value:
+            return
+        slider.blockSignals(True)
+        slider.setValue(value)
+        slider.blockSignals(False)
+        self.servo_val_lbls[servo_id].setText("%d%%" % value)
+
+    # -- Observateur de clic terrain ------------------------------------------
+    def _toggle_click_observer(self, checked):
+        if checked:
+            Gui.Selection.addObserver(self._click_observer)
+        else:
+            Gui.Selection.removeObserver(self._click_observer)
+
+    # -- Reception des messages du robot --------------------------------------
+    def _poll_inbox(self):
+        while True:
+            try:
+                msg = self.link.inbox.get_nowait()
+            except queue.Empty:
+                break
+            self._handle_message(msg)
+
+    def _handle_message(self, msg):
+        if "_event" in msg:
+            if msg["_event"] == "disconnected" and self.link._ws is None:
+                self.status_lbl.setText("Connexion perdue")
+                self.connect_btn.setText("Connecter")
+            return
+
+        msg_type = msg.get("type")
+        if msg_type == "pose":
+            set_robot_pose(self.doc, msg["x"], msg["y"], msg["a"])
+            self.pose_lbl.setText(
+                "Pose : x=%.0f y=%.0f a=%.1f deg  etat=%s  dist=%.0f  team=%s  clic=%s"
+                % (msg["x"], msg["y"], msg["a"], msg.get("state", "?"),
+                   msg.get("nd", 0.0), msg.get("tm", "?"),
+                   "oui" if msg.get("cc") else "non")
+            )
+            self.doc.recompute()
+            Gui.updateGui()
+        elif msg_type == "lidar_abs":
+            set_lidar_points(self.doc, msg.get("pts", []))
+            self.doc.recompute()
+        elif msg_type == "act":
+            self._sync_slider("brasDroit", msg.get("bd", 0.0))
+            self._sync_slider("brasGauche", msg.get("bg", 0.0))
+            self._sync_slider("lifter", msg.get("li", 0.0))
+            self._sync_slider("gripper", msg.get("gr", 0.0))
+            self.act_lbl.setText(
+                "Etat reel actionneurs : brasDroit=%.0f%%  brasGauche=%.0f%%  lifter=%.0f%%  gripper=%.0f%%"
+                % (msg.get("bd", 0.0), msg.get("bg", 0.0), msg.get("li", 0.0), msg.get("gr", 0.0))
+            )
+        elif "l" in msg and "m" in msg:
+            App.Console.PrintLog("[ROBOT][%s][%s] %s\n" % (msg.get("l"), msg.get("t"), msg.get("m")))
+
+    # -- Fermeture --------------------------------------------------------
+    def closeEvent(self, event):
+        self._timer.stop()
+        if self.click_chk.isChecked():
+            Gui.Selection.removeObserver(self._click_observer)
+        self.link.disconnect()
+        super(EurobotPanel, self).closeEvent(event)
+
+
+class EurobotTaskPanel:
+    """Enveloppe requise par Gui.Control pour afficher EurobotPanel dans
+    l'onglet Taches du panneau combine, comme les operations natives."""
+
+    def __init__(self):
+        self.form = EurobotPanel()
+
+    def getStandardButtons(self):
+        return int(QtWidgets.QDialogButtonBox.Close)
+
+    def _cleanup_and_close(self):
+        try:
+            self.form.close()  # stoppe le timer / coupe la liaison WS
+        except RuntimeError:
+            pass  # widget Qt deja detruit : ignore
+        return True
+
+    reject = _cleanup_and_close
+    accept = _cleanup_and_close
+
+
+def _show_panel():
+    try:
+        Gui.Control.closeDialog()  # ferme un eventuel panneau de tache deja ouvert
+    except Exception:
+        pass
+    task = EurobotTaskPanel()
+    Gui.Control.showDialog(task)
+    Gui._eurobotTask = task
+
+
+try:
+    _show_panel()
+except Exception as exc:
+    import traceback
+    App.Console.PrintError(traceback.format_exc())
+    QtWidgets.QMessageBox.critical(Gui.getMainWindow(), "Eurobot — erreur au lancement", str(exc))
+
+
